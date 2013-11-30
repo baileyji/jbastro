@@ -5,7 +5,30 @@ from great_circle_dist import dist_radec_fast
 
 M2FS_FOV_DEG=29.0/60
 
+def sexiegesmal_fmt(n, ra=False):
+    """n into dd:mm:ss.s or hh:mm:ss.s if ra=True"""
+    if type(n)==str:
+        if ':' in n:
+            return n
+        else:
+            return ':'.join(n.split())
+    if type(n) in [tuple, list]:
+        return ':'.join([str(x) for x in n])
+    if type(n) in (float, int):
+        if ra:
+            sec=3600*n/15.0
+            hord=int(sec)/3600
+            m=int(sec % 3600)/60
+            secs=(sec % 3600) % 60
+        else:
+            hord=int(n)
+            m=int((n-hord)*60)
+            secs=(n-hord-m*60)*60
+        return '{}:{}:{:.1f}'.format(hord,m,secs)
+    raise ValueError
+
 def cycscatter(*args,**kwargs):
+    """Make a cyclic scatter plot"""
     x=args[0].copy()
     if 'set_xlim' in kwargs:
         set_xlim=kwargs.pop('set_xlim')
@@ -36,7 +59,7 @@ def cycscatter(*args,**kwargs):
         return False
 
 def getIsochrone(age, color='VJ'):
-    """Takes age in Myr"""
+    """Takes age in Myr color=vj or bv"""
     if age < 100:
         grid_age=roundTo(age, 10)
     elif age < 500:
@@ -67,7 +90,8 @@ def getIsochrone(age, color='VJ'):
 
 
 def RtoV(Rabs):
-    """Get the Vabs for a star with Rabs
+    """
+    Rabs -> Vabs F5-K5
     Interpolates based on values for F5,G5, K3, & K5 MS dwarfs
     Dom=[3.17,6.53]
     """ 
@@ -124,7 +148,7 @@ def expTime(paramTriple, seeing=1.0):
 
 
 def estMag(sptype, band='R'):
-    """ Return the V or R abs mag for a B0-M0 star """
+    """V or R (default) abs mag for a B0-M0 star """
     try:
         mult=['B','A','F','G','K', 'M'].index(sptype[0].upper())
     except ValueError:
@@ -152,7 +176,8 @@ def estMag(sptype, band='R'):
 
 def estBV(sptype):
     """ 
-    Return the B-V value for a B0-M0 star
+    B-V value for a B0-M0 star
+    
     Appendix B, Gray
     """
     try:
@@ -172,6 +197,7 @@ def estBV(sptype):
                                0.92, 0.96, 1.15, 1.30, 1.41]))
 
 def estSpType(absmag, dm=None, band='V'):
+    """Spectral type for Mag, mag if dm=modulus, V(default) or R"""
     if dm != None:
         absmag=absmag-dm
     if band=='V':
