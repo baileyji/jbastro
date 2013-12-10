@@ -318,7 +318,9 @@ class cosmicsimage:
 		# We dilate the satpixels alone, to ensure connectivity in glitchy regions and to add a safety margin around them.
 		#dilstruct = np.array([[0,1,0], [1,1,1], [0,1,0]])
 		
-		dilsatpixels = ndimage.morphology.binary_dilation(satpixels, structure=dilstruct, iterations=2, mask=None, output=None, border_value=0, origin=0, brute_force=False)
+		dilsatpixels = ndimage.morphology.binary_dilation(satpixels,
+            structure=dilstruct, iterations=2, mask=None, output=None,
+            border_value=0, origin=0, brute_force=False)
 		# It turns out it's better to think large and do 2 iterations...
 		
 		

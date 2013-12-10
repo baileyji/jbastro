@@ -5,6 +5,27 @@ from great_circle_dist import dist_radec_fast
 
 M2FS_FOV_DEG=29.0/60
 
+from astropy.io import fits
+import m2fs.ccd
+from jbastro.lacosmics.cosmics import cosmicsimage
+
+def crreject(im, **cosmics_settings):
+    """Give a seqno or a path to a quad if file set"""
+    def_cosmic_settings={'sigclip': 10.0, 'sigfrac': 0.5,
+        'objlim': 4.0, 'iter':6,'readnoise':0.0,
+        'gain':1.0, 'satlevel':.95*m2fs.ccd.satlevel}
+    
+    for k, v in def_cosmic_settings.iteritems():
+        if k not in cosmics_settings:
+            cosmics_settings[k]=v
+    
+    cosmic_iter=cosmics_settings.pop('iter',6)
+    
+    c=cosmicsimage(im, **cosmics_settings)
+    c.run(maxiter = cosmic_iter)
+    
+    return c.mask.astype(np.uint8)
+
 def sexiegesmal_fmt(n, ra=False):
     """n into dd:mm:ss.s or hh:mm:ss.s if ra=True"""
     if type(n)==str:
