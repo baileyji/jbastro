@@ -11,15 +11,15 @@ from jbastro.lacosmics.cosmics import cosmicsimage
 
 def crreject(im, **cosmics_settings):
     """Give a seqno or a path to a quad if file set"""
-    def_cosmic_settings={'sigclip': 10.0, 'sigfrac': 0.5,
-        'objlim': 4.0, 'iter':6,'readnoise':0.0,
+    def_cosmic_settings={'sigclip': 6.0, 'sigfrac': 0.5,
+        'objlim': 1.4, 'iter':7,'readnoise':0.0,
         'gain':1.0, 'satlevel':.95*m2fs.ccd.satlevel}
     
     for k, v in def_cosmic_settings.iteritems():
         if k not in cosmics_settings:
             cosmics_settings[k]=v
     
-    cosmic_iter=cosmics_settings.pop('iter',6)
+    cosmic_iter=cosmics_settings.pop('iter')
     
     c=cosmicsimage(im, **cosmics_settings)
     c.run(maxiter = cosmic_iter)
