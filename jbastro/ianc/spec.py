@@ -439,7 +439,11 @@ def fitPSF(ec, guessLoc, fitwidth=20, verbose=False, sigma=5,
     return x, newY, err_newY
 
 
-def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False, ordlocs=None, stepsize=20, fitwidth=20, plotalot=False, medwidth=6, xylims=None, uncertainties=None, g=gain, rn=readnoise, badpixelmask=None, retsnr=False, retfits=False):
+def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
+                ordlocs=None, stepsize=20, fitwidth=20, plotalot=False,
+                medwidth=6, xylims=None, uncertainties=None, g=gain,
+                rn=readnoise, badpixelmask=None, retsnr=False, retfits=False,
+                max_ctr_move=6):
     """
     Trace spectral orders for a specified filename.
 
@@ -665,10 +669,10 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False, ordlocs=Non
         for i_meas in range(nAbove):
             guessLoc = xAbove[i_meas], lastY
 
-            if abs(thisy - yInit)>fitwidth/2:
             thisx, thisy, err_thisy = fitPSF(ec, guessLoc, fitwidth=fitwidth,
                                              verbose=verbose-1,
                                              medwidth=medwidth, err_ec=err_ec)
+            if abs(thisy - yInit)>max_ctr_move:
                 thisy = yInit
                 err_thisy = yInit
                 lastY = yInit
@@ -688,10 +692,10 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False, ordlocs=Non
         lastY = yInit
         for i_meas in range(nBelow):
             guessLoc = xBelow[i_meas], lastY
-            if abs(thisy-lastY)>fitwidth/2:
             thisx, thisy, err_thisy = fitPSF(ec, guessLoc, fitwidth=fitwidth,
                                              verbose=verbose-1,
                                              medwidth=medwidth, err_ec=err_ec)
+            if abs(thisy-lastY)>max_ctr_move:
                 thisy = np.nan
             else:
                 lastY = thisy.astype(int)
