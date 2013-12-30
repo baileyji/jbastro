@@ -370,6 +370,7 @@ def fit2Gaussian(vec, err=None, verbose=False, guess=None, holdfixed=None):
     return fit[0]
 
 def fitPSF(ec, guessLoc, fitwidth=20, verbose=False, sigma=5,
+           medwidth=6, err_ec=None):
     """
     Helper function to fit 1D PSF near a given region.  Assumes
     spectrum runs horizontally across the frame!
@@ -547,6 +548,7 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
         if ordlocs.ndim==1:
             ordlocs = ordlocs.reshape(1, ordlocs.size)
         autopick = True
+        nord=len(ordlocs)
     else:
         autopick = False
 
@@ -673,11 +675,13 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
                                              verbose=verbose-1,
                                              medwidth=medwidth, err_ec=err_ec)
             if abs(thisy - yInit)>max_ctr_move:
+#TODO: use a polyfit to patch?
+#TODO: detect lost trace -> end of extraction
                 thisy = yInit
                 err_thisy = yInit
                 lastY = yInit
             else:
-                lastY = thisy.astype(int)
+                lastY = thisy.round().astype(int)
             yAbove[i_meas] = thisy
             err_yAbove[i_meas] = err_thisy
             if verbose:
@@ -698,7 +702,7 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
             if abs(thisy-lastY)>max_ctr_move:
                 thisy = np.nan
             else:
-                lastY = thisy.astype(int)
+                lastY = thisy.round().astype(int)
             yBelow[i_meas] = thisy
             err_yBelow[i_meas] = err_thisy
             if verbose:
@@ -726,6 +730,7 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
             ax.axis([0, nx, 0, ny])   
             plt.figure(f.number)
             plt.draw()
+            plt.show()
 
         if retsnr:
             position_SNRs.append(yPositions / err_yPositions)
