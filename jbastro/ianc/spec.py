@@ -369,7 +369,7 @@ def fit2Gaussian(vec, err=None, verbose=False, guess=None, holdfixed=None):
 
     return fit[0]
 
-def fitPSF(ec, guessLoc, fitwidth=20, verbose=False, sigma=5, medwidth=6, err_ec=None):
+def fitPSF(ec, guessLoc, fitwidth=20, verbose=False, sigma=5,
     """
     Helper function to fit 1D PSF near a given region.  Assumes
     spectrum runs horizontally across the frame!
@@ -425,9 +425,9 @@ def fitPSF(ec, guessLoc, fitwidth=20, verbose=False, sigma=5, medwidth=6, err_ec
         err = np.sqrt((err_ec[ymin:ymax,xmin:xmax]**2).mean(1))
         err[True - np.isfinite(err)] = err[np.isfinite(err)].max() * 1e9
 
-    guessAmp = (an.wmean(firstSeg, 1./err**2) - np.median(firstSeg)) * fitwidth
-    if not np.isfinite(guessAmp):
-        pdb.set_trace()
+    #guessAmp = (an.wmean(firstSeg, 1./err**2) - np.median(firstSeg)) * fitwidth
+    #if not np.isfinite(guessAmp):
+    #     pdb.set_trace()
 
     #fit, efit = fitGaussian(firstSeg, verbose=verbose, err=err, guess=[guessAmp[0], 5, fitwidth/2., np.median(firstSeg)])
     fit, efit = fitGaussian(firstSeg, verbose=verbose, err=err, guess=None)
@@ -629,7 +629,9 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False, ordlocs=Non
     for ordernumber in range(nord):
 
         guessLoc = ordlocs[ordernumber,:]
-        xInit, yInit, err_yInit = fitPSF(ec, guessLoc, fitwidth=fitwidth,verbose=verbose, medwidth=medwidth, err_ec=err_ec)
+        xInit, yInit, err_yInit = fitPSF(ec, guessLoc, fitwidth=fitwidth,
+                                         verbose=verbose, medwidth=medwidth,
+                                         err_ec=err_ec)
 
         if plotalot:
             ax.plot([xInit],[yInit], '*k')
@@ -651,7 +653,8 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False, ordlocs=Non
         iInit = nBelow
 
         if verbose:
-            message("Going to measure PSF at the following %i locations:"%nToMeasure )
+            message("Going to measure PSF at the following %i locations:" %
+                    nToMeasure )
             message(xAbove)
             message(xBelow)
         
@@ -662,8 +665,10 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False, ordlocs=Non
         for i_meas in range(nAbove):
             guessLoc = xAbove[i_meas], lastY
 
-            thisx, thisy, err_thisy = fitPSF(ec, guessLoc, fitwidth=fitwidth, verbose=verbose-1, medwidth=medwidth, err_ec=err_ec)
             if abs(thisy - yInit)>fitwidth/2:
+            thisx, thisy, err_thisy = fitPSF(ec, guessLoc, fitwidth=fitwidth,
+                                             verbose=verbose-1,
+                                             medwidth=medwidth, err_ec=err_ec)
                 thisy = yInit
                 err_thisy = yInit
                 lastY = yInit
@@ -683,8 +688,10 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False, ordlocs=Non
         lastY = yInit
         for i_meas in range(nBelow):
             guessLoc = xBelow[i_meas], lastY
-            thisx, thisy, err_thisy = fitPSF(ec, guessLoc, fitwidth=fitwidth, verbose=verbose-1, medwidth=medwidth, err_ec=err_ec)
             if abs(thisy-lastY)>fitwidth/2:
+            thisx, thisy, err_thisy = fitPSF(ec, guessLoc, fitwidth=fitwidth,
+                                             verbose=verbose-1,
+                                             medwidth=medwidth, err_ec=err_ec)
                 thisy = np.nan
             else:
                 lastY = thisy.astype(int)
