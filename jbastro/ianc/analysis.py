@@ -30,7 +30,9 @@
 
 
 import numpy as np
-from numpy import ones, std, sum, mean, median, array, linalg, tile, concatenate, floor, Inf, arange, meshgrid, zeros, sin, cos, tan, arctan, sqrt, exp, nan, max
+from numpy import ones, std, sum, mean, median, array, linalg, tile
+from numpy import concatenate, floor, Inf, arange, meshgrid, zeros
+from numpy import sin, cos, tan, arctan, sqrt, exp, nan, max
 import pdb
 from pylab import find
 from scipy import optimize
@@ -1168,8 +1170,9 @@ def amedian(a, axis=None):
 
 
 
-def polyfitr(x, y, N, s, fev=100, w=None, diag=False, clip='both', \
-                 verbose=False, plotfit=False, plotall=False, eps=1e-13, catchLinAlgError=False):
+def polyfitr(x, y, N, s, fev=100, w=None, diag=False, clip='both',
+             verbose=False, plotfit=False, plotall=False, eps=1e-13,
+             catchLinAlgError=False):
     """Matplotlib's polyfit with weights and sigma-clipping rejection.
 
     :DESCRIPTION:
@@ -1209,7 +1212,7 @@ def polyfitr(x, y, N, s, fev=100, w=None, diag=False, clip='both', \
     # 2012-08-20 16:47 IJMC: Major change: now only reject one point per iteration!
     # 2012-08-27 10:44 IJMC: Verbose < 0 now resets to 0
     # 2013-05-21 23:15 IJMC: Added catchLinAlgError
-
+#TODO: use scipy for the actual fitting, made change document if works
     from CARSMath import polyfitw
     from numpy import polyfit, polyval, isfinite, ones
     from numpy.linalg import LinAlgError
@@ -1245,15 +1248,16 @@ def polyfitr(x, y, N, s, fev=100, w=None, diag=False, clip='both', \
             stdResidual = std(residual)
             clipmetric = s * stdResidual
         else:
-            if catchLinAlgError:
-                try:
-                    p = polyfitw(xx2,yy2, ww2, N)
-                except LinAlgError:
-                    p = np.zeros(N+1, dtype=float)
-            else:
-                p = polyfitw(xx2,yy2, ww2, N)
-
-            p = p[::-1]  # polyfitw uses reverse coefficient ordering
+#            if catchLinAlgError:
+#                try:
+#                    p = polyfitw(xx2,yy2, ww2, N)
+#                except LinAlgError:
+#                    p = np.zeros(N+1, dtype=float)
+#            else:
+#                p = polyfitw(xx2,yy2, ww2, N)
+#
+#            #p = p[::-1]  # polyfitw uses reverse coefficient ordering
+            p = polyfit(xx2,yy2,N,w=ww2)
             residual = (yy2 - polyval(p,xx2)) * np.sqrt(ww2)
             clipmetric = s
 

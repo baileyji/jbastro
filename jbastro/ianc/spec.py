@@ -24,6 +24,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import optimize, interpolate
 import pdb
+import ipdb
 
 
 class baseObject:
@@ -38,6 +39,26 @@ class baseObject:
 from jbastro.ianc.analysis import polyfitr, stdr, binarray, gaussian, egaussian
 import jbastro.ianc.analysis as an
 from jbastro.ianc.nsdata import bfixpix
+
+def array_or_filename(input, kw_getdata=dict(), kw_array=dict(), noneoutput=None):
+    """If input is a Numpy array, return it.  If it is of type str,
+        use Pyfits to read in the file and return it.  Keyword options are
+        available for the calls to pyfits.getdata and numpy.array.  If
+        input is None, return noneoutput."""
+    # 2012-09-03 11:43 IJMC: Created
+    # 2014-01-02 17:59 JIB: Copied from IJC's tools library
+    from astropy.io.fits import getdata
+    
+    if input is None:
+        output = noneoutput
+    else:
+        if isinstance(input, str):
+            output = getdata(input, **kw_getdata)
+        else:
+            output = np.array(input, **kw_array)
+    
+    return output
+
 
 ########
 # Parameters to put in a GUI:
@@ -206,7 +227,7 @@ def fitGaussian(vec, err=None, verbose=False, guess=None):
     else:
         fiterr = np.sqrt(np.diag(fitcov))
 
-    #pdb.set_trace()
+
     if verbose:
         print 'Best-fit parameters>>', fit
         f = plt.figure()
@@ -214,7 +235,6 @@ def fitGaussian(vec, err=None, verbose=False, guess=None):
         plt.plot(xtemp, vec, 'o', \
                      xtemp, gaussian(fit, xtemp), '-', \
                      xtemp, gaussian(guess, xtemp), '--')
-
     return fit, fiterr
 
 
@@ -432,19 +452,23 @@ def fitPSF(ec, guessLoc, fitwidth=20, verbose=False, sigma=5,
 
     #fit, efit = fitGaussian(firstSeg, verbose=verbose, err=err, guess=[guessAmp[0], 5, fitwidth/2., np.median(firstSeg)])
     fit, efit = fitGaussian(firstSeg, verbose=verbose, err=err, guess=None)
+    #fit: p3 + p0/(p1*sqrt(2pi)) * exp(-(x-p2)**2 / (2*p1**2))
     newY = ymin+fit[2]
     err_newY = efit[2]
     if verbose:
         message("Initial position: (%3.2f,%3.2f)"%(x,newY))
 
-    return x, newY, err_newY
+    return x, newY, err_newY, fit[3] + fit[0]/(fit[1]*np.sqrt(2*np.pi))
+#TODO: verify err is
 
 
 def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
                 ordlocs=None, stepsize=20, fitwidth=20, plotalot=False,
-                medwidth=6, xylims=None, uncertainties=None, g=gain,
+                medwidth=15, xylims=None, uncertainties=None, g=gain,
                 rn=readnoise, badpixelmask=None, retsnr=False, retfits=False,
-                max_ctr_move=6):
+                max_ctr_move=6, errLim=8, thresh=100):
+#TODO: figure out what errLim should be
+#TODO: add new terms to the docs
     """
     Trace spectral orders for a specified filename.
 
@@ -575,7 +599,8 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
     if dispaxis<>0:
         ec = ec.transpose()
         err_ec = err_ec.transpose()
-        if verbose: message("Took transpose of echelleogram to rotate dispersion axis")
+        if verbose: message("Took transpose of echelleogram "
+                            "to rotate dispersion axis")
     else:
         pass
 
@@ -593,8 +618,8 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
         if not hasattr(badpixelmask, 'shape'):
             badpixelmask = pyfits.getdata(badpixelmask)
         if xylims is not None:
-            badpixelmask = badpixelmask[xylims[0]:xylims[1], xylims[2]:xylims[3]]
-
+            badpixelmask = badpixelmask[xylims[0]:xylims[1],
+                                        xylims[2]:xylims[3]]
         
     err_ec[badpixelmask.nonzero()] = err_ec[np.isfinite(err_ec)].max() * 1e9
 
@@ -614,10 +639,12 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
         ax.axis([0, nx, 0, ny])
 
     orderCoefs = np.zeros((nord, pord+1), float)
+    colRange = np.zeros((nord, 2), np.float)
+
     position_SNRs = []
     xyfits = []
     if not autopick:
-
+        
         ordlocs = np.zeros((nord, 2),float)
         for ordernumber in range(nord):
             message('Selecting %i orders; please click on order %i now.' % (nord, 1+ordernumber))
@@ -633,9 +660,9 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
                 message(guessLoc)
 
     for ordernumber in range(nord):
-
+        
         guessLoc = ordlocs[ordernumber,:]
-        xInit, yInit, err_yInit = fitPSF(ec, guessLoc, fitwidth=fitwidth,
+        xInit, yInit, err_yInit, peakInit = fitPSF(ec, guessLoc, fitwidth=fitwidth,
                                          verbose=verbose, medwidth=medwidth,
                                          err_ec=err_ec)
 
@@ -651,94 +678,106 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
         # Prepare to fit PSFs at multiple wavelengths.
 
         # Determine the other positions at which to fit:
-        xAbove = np.arange(1, np.ceil(1.0*(nx-xInit)/stepsize))*stepsize + xInit
-        xBelow = np.arange(-1,-np.ceil((1.+xInit)/stepsize),-1)*stepsize + xInit
-        nAbove = len(xAbove)
-        nBelow = len(xBelow)
-        nToMeasure = nAbove + nBelow + 1
-        iInit = nBelow
+
+        xPositions = np.concatenate((
+            (np.arange(-1,-np.ceil((1.+xInit)/stepsize),-1)*stepsize + xInit)[::-1],
+            [xInit],
+            np.arange(1, np.ceil(1.0*(nx-xInit)/stepsize))*stepsize + xInit))
+
+        yPositions = np.zeros_like(xPositions)
+        err_yPositions = np.zeros_like(xPositions)
+        peaks = np.zeros_like(xPositions)
+        
+        xPositions=xPositions[np.argsort(abs(xPositions-xInit))]
+        yPositions[0] = yInit
+        err_yPositions[0] = err_yInit
+        peaks[0] = peakInit
+        
 
         if verbose:
-            message("Going to measure PSF at the following %i locations:" %
-                    nToMeasure )
-            message(xAbove)
-            message(xBelow)
-        
-        # Measure all positions "above" the initial selection:
-        yAbove = np.zeros(nAbove,float)
-        err_yAbove = np.zeros(nAbove,float)
-        lastY = yInit
-        for i_meas in range(nAbove):
-            guessLoc = xAbove[i_meas], lastY
+            message("Going to measure PSF at "
+                    "the following {} locations:".format(len(xPositions)-1) )
+            message(xPositions)
 
-            thisx, thisy, err_thisy = fitPSF(ec, guessLoc, fitwidth=fitwidth,
-                                             verbose=verbose-1,
-                                             medwidth=medwidth, err_ec=err_ec)
-            if abs(thisy - yInit)>max_ctr_move:
-#TODO: use a polyfit to patch?
-#TODO: detect lost trace -> end of extraction
-                thisy = yInit
-                err_thisy = yInit
-                lastY = yInit
+        def guessY(x):
+            #use i_meas, xPositions, & xPositions of traceorders
+            nearest=yPositions[(x-xPositions[:i_meas]).argmin()]
+            if i_meas < pord+1:
+                return nearest
             else:
-                lastY = thisy.round().astype(int)
-            yAbove[i_meas] = thisy
-            err_yAbove[i_meas] = err_thisy
+                coeff = polyfitr(xPositions[:i_meas], yPositions[:i_meas],
+                                pord, 3, w=1./err_yPositions[:i_meas]**2)
+                guess=np.polyval(coeff,x)
+                return guess
+
+        # Measure all positions about the initial selection:
+
+        lastY = yInit
+        for i_meas in range(1,len(xPositions)):
+            guessLoc = xPositions[i_meas], guessY(xPositions[i_meas])
+
+            thisx, thisy, err_thisy, thispeak = fitPSF(ec, guessLoc,
+                                            fitwidth=fitwidth,
+                                            verbose=verbose-1,
+                                            medwidth=medwidth, err_ec=err_ec)
+
+            if (err_thisy > errLim or
+               abs(thisy - yPositions[abs(thisx-xPositions[:i_meas]).argmin()]) > max_ctr_move):
+                yPositions[i_meas]=guessLoc[1]
+                err_yPositions[i_meas]=np.nan
+            else:
+                yPositions[i_meas]=thisy
+                err_yPositions[i_meas]=err_thisy
+                peaks[i_meas]=thispeak
             if verbose:
-                print thisx, thisy
-            if plotalot and not np.isnan(thisy):
+                print thisx, thisy, err_thisy, thispeak
+            if (plotalot and not
+                np.isnan(thisy) and not
+                np.isnan(err_yPositions[i_meas])):
                 #ax.plot([thisx], [thisy], 'xk')
                 ax.errorbar([thisx], [thisy], [err_thisy], fmt='xk')
 
-        # Measure all positions "below" the initial selection:
-        yBelow = np.zeros(nBelow,float)
-        err_yBelow = np.zeros(nBelow,float)
-        lastY = yInit
-        for i_meas in range(nBelow):
-            guessLoc = xBelow[i_meas], lastY
-            thisx, thisy, err_thisy = fitPSF(ec, guessLoc, fitwidth=fitwidth,
-                                             verbose=verbose-1,
-                                             medwidth=medwidth, err_ec=err_ec)
-            if abs(thisy-lastY)>max_ctr_move:
-                thisy = np.nan
-            else:
-                lastY = thisy.round().astype(int)
-            yBelow[i_meas] = thisy
-            err_yBelow[i_meas] = err_thisy
-            if verbose:
-                print thisx, thisy
-            if plotalot and not np.isnan(thisy):
-                ax.errorbar([thisx], [thisy], [err_thisy], fmt='xk')
-    
-        # Stick all the fit positions together:
-        yPositions = np.concatenate((yBelow[::-1], [yInit], yAbove))
-        err_yPositions = np.concatenate((err_yBelow[::-1], [err_yInit], err_yAbove))
-        xPositions = np.concatenate((xBelow[::-1], [xInit], xAbove))
-
+        sortndx=np.argsort(xPositions)
+        yPositions=yPositions[sortndx]
+        xPositions=xPositions[sortndx]
+        peaks=peaks[sortndx]
+        err_yPositions=err_yPositions[sortndx]
         if verbose:
             message("Measured the following y-positions:")
             message(yPositions)
 
-        theseTraceCoefs = polyfitr(xPositions, yPositions, pord, 3, \
-                                       w=1./err_yPositions**2, verbose=verbose)
+        # Fit the determined positions
+        theseTraceCoefs = polyfitr(xPositions, yPositions, pord, 3,
+                                   w=1./err_yPositions**2, verbose=verbose)
         orderCoefs[ordernumber,:] = theseTraceCoefs
+
+        # Determine first and last x positions
+        # This isn't great, but might be ok for a first go,
+        # absorption lines certainly won't cause problems
+        colRange[ordernumber,:]=(np.min(xPositions[peaks > thresh]),
+                                 np.max(xPositions[peaks > thresh]))
+
+
         # Plot the traces
         if plotalot:
-            ax.plot(np.arange(nx), np.polyval(theseTraceCoefs,np.arange(nx)), '-k')
-            ax.plot(np.arange(nx), np.polyval(theseTraceCoefs,np.arange(nx))+fitwidth/2, '--k')
-            ax.plot(np.arange(nx), np.polyval(theseTraceCoefs,np.arange(nx))-fitwidth/2, '--k')
+            ax.plot(np.arange(nx), np.polyval(theseTraceCoefs,np.arange(nx)),
+                    '-k')
+            ax.plot(np.arange(nx),
+                    np.polyval(theseTraceCoefs,np.arange(nx))+fitwidth/2, '--k')
+            ax.plot(np.arange(nx),
+                    np.polyval(theseTraceCoefs,np.arange(nx))-fitwidth/2, '--k')
             ax.axis([0, nx, 0, ny])   
             plt.figure(f.number)
             plt.draw()
             plt.show()
 
-        if retsnr:
+        if retsnr: #this is meaningless
             position_SNRs.append(yPositions / err_yPositions)
         if retfits:
             xyfits.append((xPositions, yPositions))
     
     # Prepare for exit and return:
-    ret = (orderCoefs,)
+    ret = (orderCoefs, colRange)
     if retsnr:
         ret = ret + (position_SNRs,)
     if retfits:
@@ -3229,7 +3268,7 @@ def optspecextr_idl(frame, gain, readnoise, x1, x2, idlexec, clobber=True, tempf
     # 2012-08-19 09:39 IJMC: Added 'inmask' option.
 
     import os
-    import pyfits
+    from astropy.io import fits as pyfits
 
     # Put the input frames in the proper format:
     if isinstance(frame, np.ndarray):
@@ -3427,6 +3466,12 @@ def optimalExtract(*args, **kw):
     else:
         verbose = False
 
+    if kw.has_key('do_bkg'):
+        do_bkg = kw['do_bkg']
+    else:
+        do_bkg = True
+        if verbose: message("Setting option 'do_bkg' to: " + str(do_bkg))
+
     if kw.has_key('bkg_radii'):
         bkg_radii = kw['bkg_radii']
     else:
@@ -3485,42 +3530,55 @@ def optimalExtract(*args, **kw):
         goodpixelmask *= (np.isfinite(frame) * np.isfinite(variance))
 
     
-    variance[True-goodpixelmask] = frame[goodpixelmask].max() * 1e9
+    #JIB#variance[True-goodpixelmask] = frame[goodpixelmask].max() * 1e9
     nlam, fitwidth = frame.shape
 
-    xxx = np.arange(-fitwidth/2, fitwidth/2)
+    xxx = np.arange(-fitwidth/2, fitwidth/2 + 1)
     xxx0 = np.arange(fitwidth)
-    if len(bkg_radii)==4: # Set all borders of background aperture:
-        backgroundAperture = ((xxx0 > bkg_radii[0]) * (xxx0 <= bkg_radii[1])) + \
-            ((xxx0 > bkg_radii[2]) * (xxx0 <= bkg_radii[3]))
-    else: # Assume trace is centered, and use only radii.
-        backgroundAperture = (np.abs(xxx) > bkg_radii[0]) * (np.abs(xxx) <= bkg_radii[1])
+
 
     if hasattr(extract_radius, '__iter__'):
-        extractionAperture = (xxx0 > extract_radius[0]) * (xxx0 <= extract_radius[1])
+        extractionAperture = ((xxx0 > extract_radius[0]) *
+                              (xxx0 <= extract_radius[1]))
     else:
         extractionAperture = np.abs(xxx) < extract_radius
 
     nextract = extractionAperture.sum()
-    xb = xxx[backgroundAperture]
 
-    #Step3: Sky Subtraction
-    if bord==0: # faster to take weighted mean:
-        background = an.wmean(frame[:, backgroundAperture], (goodpixelmask/variance)[:, backgroundAperture], axis=1)
+    if do_bkg:
+        if len(bkg_radii)==4: # Set all borders of background aperture:
+            backgroundAperture =(((xxx0 > bkg_radii[0]) *
+                                  (xxx0 <= bkg_radii[1])) +
+                                 ((xxx0 > bkg_radii[2]) *
+                                  (xxx0 <= bkg_radii[3])))
+        else: # Assume trace is centered, and use only radii.
+            backgroundAperture = ((np.abs(xxx) > bkg_radii[0]) *
+                                  (np.abs(xxx) <= bkg_radii[1]))
+
+        xb = xxx[backgroundAperture]
+
+        #Step3: Sky Subtraction
+        if bord==0: # faster to take weighted mean:
+            background = an.wmean(frame[:, backgroundAperture],
+                    (goodpixelmask/variance)[:, backgroundAperture], axis=1)
+        else:
+            background = 0. * frame
+            for ii in range(nlam):
+                fit = an.polyfitr(xb, frame[ii, backgroundAperture], bord,
+                        bsigma,
+                        w=(goodpixelmask/variance)[ii, backgroundAperture],
+                        verbose=verbose-1)
+                background[ii, :] = np.polyval(fit, xxx)
+
+        # (my 3a: mask any bad values)
+        badBackground = True - np.isfinite(background)
+        background[badBackground] = 0.
+        if verbose and badBackground.any():
+            print "Found bad background values at: ", badBackground.nonzero()
+
+        skysubFrame = frame - background
     else:
-        background = 0. * frame
-        for ii in range(nlam):
-            fit = an.polyfitr(xb, frame[ii, backgroundAperture], bord, bsigma, w=(goodpixelmask/variance)[ii, backgroundAperture], verbose=verbose-1)
-            background[ii, :] = np.polyval(fit, xxx)
-
-    # (my 3a: mask any bad values)
-    badBackground = True - np.isfinite(background)
-    background[badBackground] = 0.
-    if verbose and badBackground.any():
-        print "Found bad background values at: ", badBackground.nonzero()
-
-    skysubFrame = frame - background
-
+        skysubFrame = frame.copy()
 
     #Step4: Extract 'standard' spectrum and its variance
     standardSpectrum = nextract * an.wmean(skysubFrame[:, extractionAperture], goodpixelmask[:, extractionAperture], axis=1) 
@@ -3771,8 +3829,9 @@ def superExtract(*args, **kw):
     #                      the initial 'standard' spectrum.
 
     from scipy import signal
-    from pylab import *
-    from nsdata import imshow, bfixpix
+    #from pylab import *
+    from matplotlib.pyplot import imshow, plot, show
+    from nsdata import bfixpix
 
 
 
@@ -3827,6 +3886,13 @@ def superExtract(*args, **kw):
     else:
         bkg_radii = [15, 20]
         if verbose: message("Setting option 'bkg_radii' to: " + str(bkg_radii))
+    
+    if kw.has_key('subtract_background'):
+        subtract_background = kw['subtract_background']
+    else:
+        subtract_background = True
+        if verbose: message("Setting option 'subtract_background' to: " +
+                            str(subtract_background))
 
     if kw.has_key('extract_radius'):
         extract_radius = kw['extract_radius']
@@ -3910,53 +3976,65 @@ def superExtract(*args, **kw):
 
     
     #xxx = np.arange(-fitwidth/2, fitwidth/2)
-    #backgroundAperture = (np.abs(xxx) > bkg_radii[0]) * (np.abs(xxx) < bkg_radii[1])
+
     #extractionAperture = np.abs(xxx) < extract_radius
     #nextract = extractionAperture.sum()
     #xb = xxx[backgroundAperture]
 
     xxx = np.arange(fitwidth) - trace.reshape(nlam,1)
-    backgroundApertures = (np.abs(xxx) > bkg_radii[0]) * (np.abs(xxx) <= bkg_radii[1])
     extractionApertures = np.abs(xxx) <= extract_radius
-
     nextracts = extractionApertures.sum(1)
 
-    #Step3: Sky Subtraction
-    background = 0. * frame
-    for ii in range(nlam):
-        if goodpixelmask[ii, backgroundApertures[ii]].any():
-            fit = an.polyfitr(xxx[ii,backgroundApertures[ii]], frame[ii, backgroundApertures[ii]], bord, bsigma, w=(goodpixelmask/variance)[ii, backgroundApertures[ii]], verbose=verbose-1)
-            background[ii, :] = np.polyval(fit, xxx[ii])
-        else:
-            background[ii] = 0.
+    #import ipdb;ipdb.set_trace()
 
-    background_at_trace = np.array([np.interp(0, xxx[j], background[j]) for j in range(nlam)])
+    if subtract_background:
 
-    # (my 3a: mask any bad values)
-    badBackground = True - np.isfinite(background)
-    background[badBackground] = 0.
-    if verbose and badBackground.any():
-        print "Found bad background values at: ", badBackground.nonzero()
+        #backgroundAperture = ((np.abs(xxx) > bkg_radii[0]) *
+        #                      (np.abs(xxx) < bkg_radii[1]))
+        backgroundApertures = ((np.abs(xxx) > bkg_radii[0]) *
+                               (np.abs(xxx) <= bkg_radii[1]))
 
-    skysubFrame = frame - background
+        #Step3: Sky Subtraction
+        background = 0. * frame
+        for ii in range(nlam):
+            if goodpixelmask[ii, backgroundApertures[ii]].any():
+                fit = an.polyfitr(xxx[ii,backgroundApertures[ii]],
+                                  frame[ii, backgroundApertures[ii]], bord,
+                                  bsigma,
+                                  w=(goodpixelmask/variance)[ii, backgroundApertures[ii]],
+                                  verbose=verbose-1)
+                background[ii, :] = np.polyval(fit, xxx[ii])
+            else:
+                background[ii] = 0.
 
+        background_at_trace = np.array([np.interp(0, xxx[j], background[j]) for j in range(nlam)])
+
+        # (my 3a: mask any bad values)
+        badBackground = True - np.isfinite(background)
+        background[badBackground] = 0.
+        if verbose and badBackground.any():
+            print "Found bad background values at: ", badBackground.nonzero()
+
+        skysubFrame = frame - background
+    else:
+        skysubFrame = frame.copy()
 
     # Interpolate and fix bad pixels for extraction of standard
     # spectrum -- otherwise there can be 'holes' in the spectrum from
     # ill-placed bad pixels.
-    fixSkysubFrame = bfixpix(skysubFrame, True-goodpixelmask, n=8, retdat=True)
+    stdSpecFrame = bfixpix(skysubFrame, ~goodpixelmask, n=8, retdat=True)
 
     #Step4: Extract 'standard' spectrum and its variance
     standardSpectrum = np.zeros((nlam, 1), dtype=float)
     varStandardSpectrum = np.zeros((nlam, 1), dtype=float)
     for ii in range(nlam):
         thisrow_good = extractionApertures[ii] #* goodpixelmask[ii] * 
-        standardSpectrum[ii] = fixSkysubFrame[ii, thisrow_good].sum()
+        standardSpectrum[ii] = stdSpecFrame[ii, thisrow_good].sum()
         varStandardSpectrum[ii] = variance[ii, thisrow_good].sum()
 
 
     spectrum = standardSpectrum.copy()
-    varSpectrum = varStandardSpectrum
+    varSpectrum = varStandardSpectrum.copy()
 
     # Define new indices (in Marsh's appendix):
     N = pord + 1
@@ -4183,7 +4261,8 @@ def superExtract(*args, **kw):
         for i in range(fitwidth):
             profile[i,:] = (Q[:,i,:] * Gsoln).sum(0)
 
-        #P = profile.copy() # for debugging 
+        P = profile.copy() # for debugging
+
         if profile.min() < 0:
             profile[profile < 0] = 0. 
         profile /= profile.sum(0).reshape(1, nlam)
@@ -4191,17 +4270,22 @@ def superExtract(*args, **kw):
         if verbose: print '%1.2f s to compute profile' % (time() - tic)
 
         #Step6: Revise variance estimates 
-        modelSpectrum = spectrum * profile.transpose()
-        modelData = modelSpectrum + background
-        variance0 = np.abs(modelData) + readnoise**2
-        variance = variance0 / (goodpixelmask + 1e-9) # De-weight bad pixels, avoiding infinite variance
+        modelSpectrum = varSpectrum * profile.transpose() # JIB: why not varSpectrum
+        modelData = modelSpectrum.copy()
+        if subtract_background:
+            modelData += background
+        variance0 = np.abs(modelData) #+ readnoise**2
 
-        outlierVariances = (frame - modelData)**2/variance
+        # De-weight bad pixels, avoiding infinite variance
+        deweighted_variance = variance0 / (goodpixelmask + 1e-9)
+
+        outlierVariances = (frame - modelData)**2/deweighted_variance
 
         if outlierVariances.max() > csigma**2:
             newBadPixels = True
             # Base our nreject-counting only on pixels within the spectral trace:
-            maxRejectedValue = max(csigma**2, np.sort(outlierVariances[Qmask])[-nreject])
+            maxRejectedValue = max(csigma**2,
+                                   np.sort(outlierVariances[Qmask])[-nreject])
             worstOutliers = (outlierVariances>=maxRejectedValue).nonzero()
             goodpixelmask[worstOutliers] = False
             numberRejected = len(worstOutliers[0])
@@ -4210,29 +4294,39 @@ def superExtract(*args, **kw):
             newBadPixels = False
             numberRejected = 0
         
-        if verbose: print "Rejected %i pixels on this iteration " % numberRejected
+        if verbose:
+            print "Rejected %i pixels on this iteration " % numberRejected
 
             
         # Optimal Spectral Extraction: (Horne, Step 8)
-        fixSkysubFrame = bfixpix(skysubFrame, True-goodpixelmask, n=8, retdat=True)
+        fixSkysubFrame = bfixpix(skysubFrame, True-goodpixelmask,
+                                 n=8, retdat=True)
         spectrum = np.zeros((nlam, 1), dtype=float)
         #spectrum1 = np.zeros((nlam, 1), dtype=float)
         varSpectrum = np.zeros((nlam, 1), dtype=float)
         goodprof =  profile.transpose() #* goodpixelmask
         for ii in range(nlam):
             thisrow_good = extractionApertures[ii] #* goodpixelmask[ii]
-            denom = (goodprof[ii, thisrow_good] * profile.transpose()[ii, thisrow_good] / variance0[ii, thisrow_good]).sum()
+            denom = (goodprof[ii, thisrow_good] *   # sum(prof^2/var)
+                     goodprof[ii, thisrow_good] /
+                     variance0[ii, thisrow_good]).sum()
             if denom==0:
                 spectrum[ii] = 0.
                 varSpectrum[ii] = 9e9
             else:
-                spectrum[ii] = (goodprof[ii, thisrow_good] * skysubFrame[ii, thisrow_good] / variance0[ii, thisrow_good]).sum() / denom
-                #spectrum1[ii] = (goodprof[ii, thisrow_good] * modelSpectrum[ii, thisrow_good] / variance0[ii, thisrow_good]).sum() / denom
+                #sum(prof*data/variance)/sum(prof^2/var)
+                spectrum[ii] = (goodprof[ii, thisrow_good] *
+                                skysubFrame[ii, thisrow_good] /
+                                variance0[ii, thisrow_good]).sum() / denom
+                #spectrum1[ii] = (goodprof[ii, thisrow_good] *
+                #                 modelSpectrum[ii, thisrow_good] /
+                #                 variance0[ii, thisrow_good]).sum() / denom
+                
+                #sum(prof)/sum(prof^2/var)
                 varSpectrum[ii] = goodprof[ii, thisrow_good].sum() / denom
-            #if spectrum.size==1218 and ii>610:
-            #    pdb.set_trace()
 
-        #if spectrum.size==1218: pdb.set_trace()
+#        if iter % 3 ==0:
+#            import ipdb;ipdb.set_trace()
 
     ret = baseObject()
     ret.spectrum = spectrum
@@ -4240,18 +4334,22 @@ def superExtract(*args, **kw):
     ret.varSpectrum = varSpectrum
     ret.trace = trace
     ret.units = 'electrons'
-    ret.background = background_at_trace
+    if subtract_background:
+        ret.background = background_at_trace
 
     ret.function_name = 'spec.superExtract'
 
     if retall:
         ret.profile_map = profile
         ret.extractionApertures = extractionApertures
-        ret.background_map = background
+        if subtract_background:
+            ret.background_map = background
         ret.variance_map = variance0
         ret.goodpixelmask = goodpixelmask
         ret.function_args = args
         ret.function_kw = kw
+
+    import ipdb;ipdb.set_trace()
 
     return  ret
 
@@ -4259,7 +4357,9 @@ def superExtract(*args, **kw):
          
 
 
-def spextractor(frame, gain, readnoise, framevar=None, badpixelmask=None, mode='superExtract', trace=None, options=None, trace_options=None, verbose=False):
+def spextractor(frame, gain, readnoise, framevar=None, badpixelmask=None,
+                mode='superExtract', trace=None, options=None,
+                trace_options=None, verbose=False, debug=False):
     """Extract a spectrum from a frame using one of several methods.
 
     :INPUTS:
@@ -4336,14 +4436,17 @@ def spextractor(frame, gain, readnoise, framevar=None, badpixelmask=None, mode='
 
         """
     # 2012-09-03 11:12 IJMC: Created
-    from tools import array_or_filename
-
+    #from tools import array_or_filename
+    
+    if debug:
+        import ipdb;ipdb.set_trace()
+    
     # Parse inputs:
     frame    = array_or_filename(frame)
     framevar = array_or_filename(framevar, noneoutput=np.abs(frame) / gain + (readnoise / gain)**2)
 
     if options is None:
-        options = dict(dispaxis=0)
+        options = {dispaxis:0}
 
 
     if verbose and not options.has_key('verbose'):
@@ -5284,7 +5387,7 @@ def calibrate_stared_mosfire_spectra(scifn, outfn, skycorrect, pixcorrect, subre
     # 2013-01-25 15:59 IJMC: Fixed various bugs relating to
     #                        determinations of subregion boundaries.
     
-    import pyfits
+    from astropy.io import fits as pyfits
     from nsdata import bfixpix
     import ir
     import os
