@@ -40,3 +40,27 @@ def derangify(s):
     l.sort()
     return tuple(l)
 
+
+def share_memory(a, b):
+    """Returns the number of shared bytes between arrays `a` and `b`."""
+    #http://stackoverflow.com/a/11287440
+    def byte_offset(a):
+        """Returns a 1-d array of the byte offset of every element in `a`.
+            Note that these will not in general be in order."""
+        stride_offset = np.ix_(*map(range,a.shape))
+        element_offset = sum(i*s for i, s in zip(stride_offset,a.strides))
+        element_offset = np.asarray(element_offset).ravel()
+        return np.concatenate([element_offset + x for x in range(a.itemsize)])
+    a_low, a_high = np.byte_bounds(a)
+    b_low, b_high = np.byte_bounds(b)
+    
+    beg, end = max(a_low,b_low), min(a_high,b_high)
+    
+    if end - beg > 0:
+        # memory overlaps
+        amem = a_low + byte_offset(a)
+        bmem = b_low + byte_offset(b)
+        
+        return np.intersect1d(amem,bmem).size
+    else:
+        return 0
