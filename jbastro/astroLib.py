@@ -7,14 +7,13 @@ from great_circle_dist import dist_radec_fast
 M2FS_FOV_DEG=29.0/60
 
 from astropy.io import fits
-import m2fs.ccd
-from jbastro.lacosmics.cosmics import cosmicsimage
+from . lacosmics.cosmics import cosmicsimage
 
 def crreject(im, **cosmics_settings):
     """Give a seqno or a path to a quad if file set"""
     def_cosmic_settings={'sigclip': 6.0, 'sigfrac': 0.5,
         'objlim': 1.4, 'iter':7,'readnoise':0.0,
-        'gain':1.0, 'satlevel':.95*m2fs.ccd.satlevel}
+        'gain':1.0, 'satlevel':.95*(2**16)}
     
     for k, v in def_cosmic_settings.iteritems():
         if k not in cosmics_settings:
