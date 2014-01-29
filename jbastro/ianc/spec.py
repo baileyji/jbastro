@@ -36,9 +36,9 @@ class baseObject:
 
 ########
 # Utilities to add in a separate cohesive package at a later date:
-from jbastro.ianc.analysis import polyfitr, stdr, binarray, gaussian, egaussian
-import jbastro.ianc.analysis as an
-from jbastro.ianc.nsdata import bfixpix
+from . analysis import polyfitr, stdr, binarray, gaussian, egaussian
+import analysis as an
+from . nsdata import bfixpix
 
 def array_or_filename(input, kw_getdata=dict(), kw_array=dict(), noneoutput=None):
     """If input is a Numpy array, return it.  If it is of type str,
