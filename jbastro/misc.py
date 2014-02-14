@@ -64,3 +64,17 @@ def share_memory(a, b):
         return np.intersect1d(amem,bmem).size
     else:
         return 0
+
+def gaussfit(xdata, ydata):
+    import numpy as np
+    from scipy.optimize import curve_fit
+
+    def fit_func(x, a0, a1, a2, a3, a4, a5):
+        z = (x - a1) / a2
+        y = a0 * np.exp(-z**2 / a2) + a3 + a4 * x + a5 * x**2
+        return y
+
+    parameters, covariance = curve_fit(fit_func, xdata, ydata)
+
+    return parameters, covariance
+
