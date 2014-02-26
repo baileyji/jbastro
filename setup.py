@@ -11,5 +11,5 @@ setup(name='jbastro',
       packages=['jbastro','jbastro.lacosmics'],
       scripts=[],
       install_requires=['numpy'],
-      package_data={'jbastro':['f2n_fonts/*']}
+      package_data={'jbastro':['f2n_fonts/*','data/*']}
       )
