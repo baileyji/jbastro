@@ -507,7 +507,8 @@ def aniscatter(x,y, **kwargs):
         line.set_data(x[:i],y[:i])
         return line,
     
-    ani = animation.FuncAnimation(fig, update_plot, frames=xrange(numframes),interval=interval, repeat=False)
+    ani = animation.FuncAnimation(fig, update_plot, frames=xrange(numframes),
+                                  interval=interval, repeat=False)
     plt.show()
     #display_animation(ani)
 
@@ -565,3 +566,117 @@ def dm2d(dm):
 
 def d2dm(parsec):
     return -5 + 5.0*np.log10(parsec)
+
+
+def baryvel_los(obstime, coords, observatory_loc):
+    """
+    vvec (output vector(4))
+    Various projections of the barycentric velocity
+	correction, expressed in km/sec. The four elements in the vector are radial,
+ 	tangential, right ascension, and declination projections respectively.
+ 	Add vvec(0) to the observed velocity scale to shift it to the barycenter.
+    """
+    from PyAstronomy.pyasl import baryvel
+    from astropy.coordinates import Longitude, ICRS
+    import astropy.units as u
+    import os
+    
+    OBSERVATORY_COORD={
+     'lick3':{
+        'lat':0.651734547,   #+37 20 29.9
+        'lon':2.123019229,	  # 121 38 24.15
+        'ht':1283.},
+     'cfht': {
+        'lat':0.346030917,  #+19 49 34
+        'lon':2.713492477, #155 28 18
+        'ht':4198.},
+     'kp':{
+        'lat':0.557865407,	#+31 57.8 (1991 Almanac)
+        'lon': 1.947787445,  #111 36.0
+        'ht':2120.},
+     'mcd':{ #McDonald (Fort Davis)
+	    'lat':0.5353215959, # +30 40.3 (1995 Almanac)
+	    'lon':1.815520621, #104 01.3
+        'ht':2075.},
+     'keck':{ #Keck (Mauna Kea)
+	    'lat':0.346040613,  #+19 49.6 (Keck website)
+	    'lon': 2.71352157,  #155 28.4
+        'ht':4159.58122},
+     'keck2':{
+         #http://irtfweb.ifa.hawaii.edu/IRrefdata/telescope_ref_data.html
+         'lat':0.34603876045870413, #19 49 35.61788
+        'lon':2.7135372866735916,   #155 28 27.24268
+        'ht':4159.58122},
+     'irtf':{
+         #http://irtfweb.ifa.hawaii.edu/IRrefdata/telescope_ref_data.html
+	    'lat':0.34603278784504105, #19 49 34.38594
+	    'lon':2.7134982735227475,  #155 28 19.19564
+        'ht':4168.06685},
+     'clay':{
+    	  'lat':-0.5063938434309143,
+    	  'lon':-1.2338154852026897,
+    	  'ht':2450.0}
+    }
+    if type(observatory_loc)!=str:
+        lat, lon, ht =observatory_loc
+    else:
+        lat=OBSERVATORY_COORD[observatory_loc]['lat']
+        lon=OBSERVATORY_COORD[observatory_loc]['lon']
+        ht=OBSERVATORY_COORD[observatory_loc]['ht']
+
+    #Make sure we've got the longitude in the time object to compute lmst
+    time=obstime.copy()
+    if time.lon==None:
+        time.lon=Longitude(lon, unit=u.radian)
+
+    from astropy.utils.iers import IERS_A,IERS_A_URL
+    from astropy.utils.data import download_file
+    try:
+        this_dir, _ = os.path.split(__file__)
+        IERS_A_PATH = os.path.join(this_dir, "data", 'finals2000A.all')
+        iers_a = IERS_A.open(IERS_A_PATH)
+    except IOError:
+        iers_a_file = download_file(IERS_A_URL, cache=True)
+        iers_a = IERS_A.open(iers_a_file)
+
+    time.delta_ut1_utc = iers_a.ut1_utc(time)
+
+
+    #Make sure coords is an ICRS object
+    if type(coords) != ICRS:
+        if coords[3]!=2000:
+            raise ValueError('Provide IRCS to handle equniox other than 2000')
+        coords=ICRS(coords[0], coords[1],
+                    unit=(u.degree, u.degree),
+                    equinox=Time('J2000', scale='utc'))
+
+    #Local rotaion rate
+    vrot = 465.102 * ((1.0 + 1.57e-7 * ht) /
+                     np.sqrt(1.0 + 0.993305 * np.tan(lat)**2))
+
+    #Precess coordinates to j
+    pcoords=coords.fk5.precess_to(time)
+
+    #Calculate barycentric velocity of earth.
+    velh, velb= baryvel(time.jd,0.0)
+
+    #Find lmst of observation
+    lmst=time.sidereal_time('mean')
+
+    #Calculation of geocentric velocity of observatory.
+    velt = vrot * np.array([-np.sin(lmst.radian), np.cos(lmst.radian), 0.0])
+
+    #Calculation of barycentric velocity components.
+    sra = np.sin(pcoords.ra.radian)
+    sdec = np.sin(pcoords.dec.radian)
+    cra = np.cos(pcoords.ra.radian)
+    cdec = np.cos(pcoords.dec.radian)
+
+    dv = velb + velt * 1e-3
+    dvr = dv[0]*cra*cdec + dv[1]*sra*cdec + dv[2]*sdec
+    dva = -dv[0]*sra + dv[1]*cra
+    dvd = -dv[0]*cra*sdec - dv[1]*sra*sdec + dv[2]*cdec
+    dvt = np.sqrt(dva*dva + dvd*dvd)
+
+    #Return
+    return [dvr, dvt, dva, dvd]
