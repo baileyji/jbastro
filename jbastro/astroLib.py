@@ -328,9 +328,12 @@ def estSpType(absmag, dm=None, band='V'):
     if dm != None:
         absmag=absmag-dm
     if band=='V':
-        type=int(round(np.interp(absmag, np.array([3.5,5.1,6.8,7.5]), np.array([0,10,18,20]))))
+        type=int(round(np.interp(absmag, np.array([3.5,5.1,6.8,7.5]),
+                                 np.array([0,10,18,20]))))
     elif band =='R':
-        type=int(round(np.interp(absmag, np.array([3.5-.33,5.1-.47,6.8-.8,7.5-.97]), np.array([0,10,18,20]))))
+        type=int(round(np.interp(absmag,
+                                 np.array([3.5-.33,5.1-.47,6.8-.8,7.5-.97]),
+                                 np.array([0,10,18,20]))))
     if type<5:
         type='F'+str((type % 10)+5)[-1]
     elif type < 15:
