@@ -225,7 +225,7 @@ def fitGaussian(vec, err=None, verbose=False, guess=None):
     if fitcov is None: # The fitting was really bad!
         fiterr = np.abs(fit)
     else:
-        fiterr = np.sqrt(np.diag(fitcov))
+        fiterr = np.sqrt(np.diag(fitcov).clip(0))
 
 
     if verbose:
@@ -587,14 +587,13 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
             message("Could not open filename %s" % filename)
             return -1
 
-
     if isinstance(uncertainties, np.ndarray):
         err_ec = uncertainties.copy()
     else:
         try:
-            err_ec = pyfits.getdata(uncertainties)
+            err_ec = pyfits.getdata(uncertainties.clip(0))
         except:
-            err_ec = np.sqrt(ec * gain + readnoise**2)
+            err_ec = np.sqrt((ec * gain + readnoise**2).clip(0))
 
     if dispaxis<>0:
         ec = ec.transpose()
@@ -634,7 +633,7 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
         ax = plt.axes()
         plt.imshow(ec, interpolation='nearest',aspect='auto')
         sortedvals = np.sort(ec.ravel())
-        plt.clim([sortedvals[nx*ny*.01], sortedvals[nx*ny*.99]])
+#        plt.clim([sortedvals[nx*ny*.01], sortedvals[nx*ny*.99]])
         #plt.imshow(np.log10(ec-ec.min()+np.median(ec)),interpolation='nearest',aspect='auto')
         ax.axis([0, nx, 0, ny])
 
