@@ -683,3 +683,32 @@ def baryvel_los(obstime, coords, observatory_loc):
 
     #Return
     return [dvr, dvt, dva, dvd]
+
+def avgstd(values, weights=None):
+    """
+    Return the weighted average and standard deviation.
+
+    values, weights -- Numpy ndarrays with the same shape.
+    """
+    average = np.average(values, weights=weights)
+    variance = np.average((values-average)**2, weights=weights)
+    return (average, np.sqrt(variance))
+
+
+def color_z_plot(x,y,z, cmap_name='gist_rainbow', lim=1e100, psym='o'):
+    oset=z-np.median(z)
+    good=(abs(oset)<lim)
+    cmap=cm.get_cmap(cmap_name)
+    c=oset[good]- oset[good].min()
+    c=(255*c/c.max()).round().astype(int).clip(0,255)
+
+    for i,ci in enumerate(c): plot(x[good][i], y[good][i],'o',c=cmap(ci))
+    plot(x[oset<-lim], y[oset<-lim], psym, c=cmap(0))
+    plot(x[oset>lim], y[oset>lim], psym, c=cmap(255))
+
+    sm=cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(
+                           vmin=z[good].min(), vmax=z[good].max()))
+    sm._A=[]
+    colorbar(sm)
+
+
