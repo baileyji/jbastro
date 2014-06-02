@@ -4,6 +4,7 @@ import astropy
 import math
 from great_circle_dist import dist_radec_fast
 
+SPEED_OF_LIGHT=299792458.0
 M2FS_FOV_DEG=29.0/60
 
 from astropy.io import fits
@@ -684,6 +685,51 @@ def baryvel_los(obstime, coords, observatory_loc):
     #Return
     return [dvr, dvt, dva, dvd]
 
+def photometric_uncertainty(wave, spec, snr=None, mask=None):
+    """Return photometric uncertainty in spectrum in m/s."""
+    
+    if type(snr)==type(None):
+        weight=np.ones_like(wave,dtype=np.float)
+    elif len(snr)==1:
+        weight=np.zeros_like(wave,dtype=np.float)+snr[0]
+    else:
+        assert len(snr)==len(weight)
+        weight=snr
+
+    dellam = np.abs(wave[1:]-wave[:-1])
+    dv = SPEED_OF_LIGHT*dellam/wave[:-1]
+    di = np.abs(spec[1:]-spec[:-1])
+    didv = di/dv
+    pixel_sigma = didv * weight
+    if type(mask) !=None:
+        pixel_sigma[mask[1:] | mask[:-1]]=0.0
+
+    return 1.0 / np.sqrt(np.sum(pixel_sigma**2.0))
+
+def broaden(wave, spec, dl):
+    """ 
+    Broaden a spectrum by a gaussian of FWHM dl
+    
+    Sepectrum should be padded by ~ 5 FWHM on either end
+    """
+
+    sig = dl/(2.0*np.sqrt(2 * np.log(2)))
+
+    n=np.ceil((wave.max()-wave.min())/(sig*0.1))
+
+    w_lin = np.arange(n, dtype=float)*sig*0.1+wave.min()
+    from scipy.interpolate import InterpolatedUnivariateSpline as IUS
+    s_lin = IUS(wave, spec)(w_lin)
+
+    k_x=np.arange(101, dtype=float)*0.1*sig - 5.0*sig
+
+    kernel = np.exp(-0.5*(k_x/sig)**2)/(sig*np.sqrt(2.0*np.pi))
+
+    import scipy.signal
+    broadened=scipy.signal.fftconvolve(s_lin, kernel,'same')*0.1*sig
+
+    return w_lin, broadened
+
 def avgstd(values, weights=None):
     """
     Return the weighted average and standard deviation.
@@ -697,18 +743,18 @@ def avgstd(values, weights=None):
 
 def color_z_plot(x,y,z, cmap_name='gist_rainbow', lim=1e100, psym='o'):
     oset=z-np.median(z)
-    good=(abs(oset)<lim)
-    cmap=cm.get_cmap(cmap_name)
+    good=(np.abs(oset)<lim)
+    cmap=plt.cm.get_cmap(cmap_name)
     c=oset[good]- oset[good].min()
     c=(255*c/c.max()).round().astype(int).clip(0,255)
 
-    for i,ci in enumerate(c): plot(x[good][i], y[good][i],'o',c=cmap(ci))
-    plot(x[oset<-lim], y[oset<-lim], psym, c=cmap(0))
-    plot(x[oset>lim], y[oset>lim], psym, c=cmap(255))
+    for i,ci in enumerate(c): plt.plot(x[good][i], y[good][i],'o',c=cmap(ci))
+    plt.plot(x[oset<-lim], y[oset<-lim], psym, c=cmap(0))
+    plt.plot(x[oset>lim], y[oset>lim], psym, c=cmap(255))
 
-    sm=cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(
+    sm=plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(
                            vmin=z[good].min(), vmax=z[good].max()))
     sm._A=[]
-    colorbar(sm)
+    plt.colorbar(sm)
 
 

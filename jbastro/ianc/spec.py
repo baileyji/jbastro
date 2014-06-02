@@ -3183,7 +3183,10 @@ def normalizeSpecFlat(flatdat, nspec=1, minsep=50, median_width=51, readnoise=40
     return masterflat
 
 
-def optspecextr_idl(frame, gain, readnoise, x1, x2, idlexec, clobber=True, tempframefn='tempframe.fits', specfn='tempspec.fits', scriptfn='temp_specextract.pro', IDLoptions="adjfunc='adjgauss', adjoptions={center:1,centerfit:1,centerdeg:3}, bgdeg=3", inmask=None):
+def optspecextr_idl(frame, gain, readnoise, x1, x2, idlexec, clobber=True,
+                    tempframefn='tempframe.fits', specfn='tempspec.fits',
+                    scriptfn='temp_specextract.pro',
+                    IDLoptions="adjfunc='adjgauss', adjoptions={center:1, centerfit:1, centerdeg:3}, bgdeg=3", inmask=None):
     """Run optimal spectral extraction in IDL; pass results to Python.
 
     :INPUTS:
