@@ -10,6 +10,6 @@ setup(name='jbastro',
       url='',
       packages=['jbastro','jbastro.lacosmics'],
       scripts=[],
-      install_requires=['numpy'],
+      install_requires=['numpy', 'matplotlib'],
       package_data={'jbastro':['f2n_fonts/*','data/*']}
       )
