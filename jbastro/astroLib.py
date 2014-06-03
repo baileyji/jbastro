@@ -487,7 +487,11 @@ def baryvel_los(obstime, coords, observatory_loc):
      'clay':{
     	  'lat':-0.5063938434309143,
     	  'lon':-1.2338154852026897,
-    	  'ht':2450.0}
+          'ht':2450.0},
+     'clay_jb':{
+          'lat':-0.506392081, #  .364" diff ~22 meters different
+          'lon':1.23381854, # .63" diff
+          'ht':2406.1}
     }
     if type(observatory_loc)!=str:
         lat, lon, ht =observatory_loc
