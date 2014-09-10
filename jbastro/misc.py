@@ -64,3 +64,89 @@ def share_memory(a, b):
         return np.intersect1d(amem,bmem).size
     else:
         return 0
+
+
+
+
+
+#;MUST NOT MODIFY   sin   as it will cause problems elsewhere (noticed 3/10/09 -JB)
+#
+#;Power (2) - polynomial order to use
+#; min_good_frac (0.5) - quit when this fraction of spectrum is left
+#; mask - bytarray(n_elements(s)) 1s indicate points in spectrum to omit from
+#;  continuum search 
+#;plot - shoe progress plots, must push enter to advance
+#; coeff - polynomial coefficients of the norm to feed into poly()
+#; Procedure: Fit a polynomial, find the bits above the curve, repeat
+#; quit when less than min_good_frac of the points are left in the spectrum,
+#; clearly this algorithm won't play well with emission lines
+import scipy.signal
+import numpy as np
+from .robust import *
+def normspec(sin, doplot=False, min_good_frac=.05, poly_pow=7, maskin=None,
+             sigmau=2.0, sigmal=1.0, region=None, med_wid=3, maxreps=5):
+    w1=0 #;window 1
+    w2=1 #;window 2
+    
+    sin=sin.copy()
+	
+	#;median smooth the input if requested
+    gs = (scipy.signal.medfilt(sin, med_wid) if med_wid > 1 else sin)
+    
+    mask = np.zeros_like(gs, dtype=np.bool) | ~np.isfinite(gs)
+    
+    if type(maskin)!=type(None):
+        mask|=maskin
+    
+    if type(region)!=type(None):
+        mask[0:max(region[0],0)]=True
+        mask[min(region[1],len(sin)-1)+1:]=True
+
+    x=np.arange(len(sin))
+    
+    good=~mask
+    n_init=(~mask).sum()
+    
+    done=False
+    rep=0
+    while not done:
+        rep+=1
+        try:
+            c,yfit2,sig=ROBUST_POLY_FIT(x[good],gs[good],poly_pow)
+        except ValueError, e:
+            import ipdb;ipdb.set_trace()
+        normtrend=np.poly1d(c)(x)
+        diff=(gs-normtrend)
+        up_sig=sigmau*diff[good].std()
+        lo_sig=sigmal*diff[good].std()
+        good=(~mask) & (gs < normtrend+up_sig) & (gs > normtrend-lo_sig)
+        ngood=good.sum()
+        
+        if doplot:
+            plt.figure(w1)
+            plt.plot(sin,'b')
+            plt.plot(normtrend,'r')
+            plt.plot(normtrend+up_sig,'g')
+            plt.plot(normtrend-lo_sig,'g')
+            plt.plot(np.where(~good)[0],sin[~good],'y,')
+
+            plt.figure(w2)
+            plt.plot(sin/normtrend)
+            plt.ylim(0,2)
+            plt.show(0)
+            print('Good: {} ({:.0}%)'.format(ngood,100*float(ngood)/n_init))
+            raw_input()
+        
+        if float(ngood)/n_init < min_good_frac:
+            done=True
+        else:
+            coeff=c
+            
+        #;Some other finishing criterion as well?
+        if rep > maxreps:
+            #print('Terminating after {} iterations.'.format(rep)
+            done=True
+
+    normtrend=np.poly1d(coeff)(x)
+    return sin/normtrend, coeff
+

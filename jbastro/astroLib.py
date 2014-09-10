@@ -362,6 +362,34 @@ def gaussfit(xdata, ydata):
 
     return (parameters, gauss_quad(xdata, *parameters))
 
+def gauss2D((x, y), amp, xo, yo, sigma_x, sigma_y, covar, offset):
+    xo = float(xo)
+    yo = float(yo)
+    
+    rho=covar/(sigma_x*sigma_y)
+    
+    z=((x-xo)/sigma_x)**2 - 2*rho*(x-xo)*(y-yo)/(sigma_x/sigma_y) + ((y-yo)/sigma_y)**2
+    
+    g=amp*np.exp(-z/(2*(1-rho**2)))+ offset
+    
+    return g
+
+def gaussfit2D(im, initialp, ftol=1e-5):
+    def g2d((x, y), amp, xo, yo, sigma_x, sigma_y, covar, offset):
+        return gauss2D((x, y), amp, xo, yo,
+                       sigma_x, sigma_y, covar, offset).ravel()
+
+    x = np.arange(im.shape[0],dtype=np.float)
+    y = np.arange(im.shape[1],dtype=np.float)
+    x, y = np.meshgrid(x, y)
+
+    from scipy.optimize import curve_fit
+    popt, pcov = curve_fit(g2d, (x, y), im.ravel(), p0=initialp,
+                           ftol=ftol, maxfev=5000)
+                           
+    model=gauss2D((x, y), *popt)
+
+    return model, popt
 
 
 def aniscatter(x,y, **kwargs):
@@ -608,7 +636,6 @@ def avgstd(values, weights=None):
     variance = np.average((values-average)**2, weights=weights)
     return (average, np.sqrt(variance))
 
-
 def color_z_plot(x,y,z, cmap_name='gist_rainbow', lim=1e100, psym='o'):
     oset=z-np.median(z)
     good=(np.abs(oset)<lim)
@@ -625,4 +652,59 @@ def color_z_plot(x,y,z, cmap_name='gist_rainbow', lim=1e100, psym='o'):
     sm._A=[]
     plt.colorbar(sm)
 
+def binned_xy_plot(x,y,nbin=10):
+    x=np.array(x)
+    y=np.array(y)
+    
+    use=np.isfinite(x) & np.isfinite(y)
+    x=x[use]
+    y=y[use]
+
+    n, _ = np.histogram(x, bins=nbin)
+    sy, _ = np.histogram(x, bins=nbin, weights=y)
+    sy2, _ = np.histogram(x, bins=nbin, weights=y*y)
+    mean = sy / n
+    std = np.sqrt(sy2/n - mean*mean)
+    
+    plt.plot(x, y, 'bo')
+    plt.errorbar((_[1:] + _[:-1])/2, mean, yerr=std, fmt='r-')
+
+def casagrandeTeff(color, sys='BV', feh=0.0):
+    data={'BV':{'mr':(-5.0, 0.4), 'xr':(0.18, 1.29), 'e':82,
+                'ai':(0.5665, 0.4809, -0.0060, -0.0613, -0.0042, 0.0035)},
+          'VRc':{'mr':(-5.0, 0.3), 'xr':(0.24, 0.80),'e':59,
+                 'ai':(0.4386, 1.4614, -0.7014, -0.0807, 0.0142, 0.0012)},
+          'RcIc':{'mr':(-5.0, 0.3), 'xr':(0.23, 0.68),'e':42,
+                  'ai':(0.3296, 1.9716, -1.0225, -0.0298, 0.0329, 0.0011)},
+          'VIc':{'mr':(-5.0, 0.3), 'xr':(0.46, 1.47), 'e':33,
+                 'ai':(0.4033, 0.8171, -0.1987, -0.0409, 0.0319, 0.0025)},
+          'VJ':{'mr':(-5.0, 0.4), 'xr':(0.61, 2.44), 'e':25,
+                'ai':(0.4669, 0.3849, -0.0350, -0.0140, 0.0225, 0.0016)},
+          'VH':{'mr':(-5.0, 0.4), 'xr':(0.67, 3.01), 'e':132,
+                'ai':(0.5251, 0.2553, -0.0119, -0.0187, 0.0410, 0.002)},
+          'VKs':{'mr':(-5.0, 0.4), 'xr':(0.78, 3.15), 'e':79,
+                'ai':(0.5057, 0.2600, -0.0146, -0.0131, 0.0288, -0.0087)},
+          'JKs':{'mr':(-5.0, 0.4), 'xr':(0.07, 0.80), 'e':43,
+                 'ai':(0.6393, 0.6104,  0.0920, -0.0330, 0.0291, -0.0009)},
+          'BtVt':{'mr':(-2.7, 0.4), 'xr':(0.19, 1.49), 'e':26,
+                  'ai':(0.5839, 0.4000, -0.0067, -0.0282, -0.0346, 0.0021)},
+          'VtJ':{'mr':(-2.7, 0.4), 'xr':(0.77, 2.56), 'e':18,
+                 'ai':(0.4525, 0.3797, -0.0357, -0.0082, 0.0123, -0.0001)},
+          'VtH':{'mr':(-2.7, 0.4), 'xr':(0.77, 3.16), 'e':62,
+                 'ai':(0.5286, 0.2354, -0.0073, -0.0182, 0.0401, -0.0055)},
+          'VtKs':{'mr':(-2.4, 0.4), 'xr':(0.99, 3.29), 'e':73,
+                  'ai':(0.4892, 0.2634, -0.0165, -0.0121, 0.0249, -0.0055)},
+          'by':{'mr':(-3.7, 0.5), 'xr':(0.18, 0.72), 'e':62,
+                'ai':(0.5796, 0.4812,  0.5747, -0.0633, 0.0042, -0.0015)}}
+    if sys not in data:
+        raise ValueError('Valid systems are {}'.format(', '.join(data.keys())))
+    dat=data[sys]
+    if feh < dat['mr'][0] or feh > dat['mr'][1]:
+        raise ValueError('Valid [Fe/H] range is {}'.format(dat['mr']))
+    if color < dat['xr'][0] or color > dat['xr'][1]:
+        raise ValueError('Valid color range is {}'.format(dat['xr']))
+    a0,a1,a2,a3,a4,a5=dat['ai']
+    return (5040.0/(a0 + a1*color + a2*color**2 + a3*color*feh +
+                    a4*feh + a5*feh**2),
+            dat['e']+17)
 
