@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.signal
 
 def rangify(data):
     """Stackoverflow"""
@@ -84,7 +85,8 @@ import scipy.signal
 import numpy as np
 from .robust import *
 def normspec(sin, doplot=False, min_good_frac=.05, poly_pow=7, maskin=None,
-             sigmau=2.0, sigmal=1.0, region=None, med_wid=3, maxreps=5):
+             sigmau=2.0, sigmal=1.0, region=None, med_wid=3, maxreps=5,
+             robust=True):
     w1=0 #;window 1
     w2=1 #;window 2
     
@@ -112,7 +114,11 @@ def normspec(sin, doplot=False, min_good_frac=.05, poly_pow=7, maskin=None,
     while not done:
         rep+=1
         try:
-            c,yfit2,sig=ROBUST_POLY_FIT(x[good],gs[good],poly_pow)
+            if robust:
+                c,yfit2,sig=ROBUST_POLY_FIT(x[good],gs[good],poly_pow)
+            else:
+                c=np.polyfit(x[good],gs[good],poly_pow)
+                yfit2=np.poly1d(c)(x[good])
         except ValueError, e:
             import ipdb;ipdb.set_trace()
         normtrend=np.poly1d(c)(x)
@@ -139,6 +145,7 @@ def normspec(sin, doplot=False, min_good_frac=.05, poly_pow=7, maskin=None,
         
         if float(ngood)/n_init < min_good_frac:
             done=True
+            if rep == 1:coeff=c
         else:
             coeff=c
             
@@ -149,4 +156,26 @@ def normspec(sin, doplot=False, min_good_frac=.05, poly_pow=7, maskin=None,
 
     normtrend=np.poly1d(coeff)(x)
     return sin/normtrend, coeff
+
+
+def inpaint_mask(im_in,mask_in):
+    ipn_kernel = np.array([[1,1,1],[1,0,1],[1,1,1]])
+    im=im_in.copy()
+    im[mask_in.astype(bool)]=np.nan
+    nans = np.isnan(im)
+    not_nans=~nans
+    while np.sum(nans)>0:
+        im[nans] = 0
+        vNeighbors = scipy.signal.convolve2d(not_nans, ipn_kernel,
+                                             mode='same', boundary='symm')
+        im2 = scipy.signal.convolve2d(im, ipn_kernel,
+                                      mode='same', boundary='symm')
+        im2[vNeighbors>0] = im2[vNeighbors>0]/vNeighbors[vNeighbors>0]
+        im2[vNeighbors==0] = np.nan
+        im2[not_nans] = im[not_nans]
+        im = im2
+        nans = np.isnan(im)
+        not_nans=~nans
+    
+    return im
 
