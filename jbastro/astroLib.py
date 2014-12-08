@@ -374,7 +374,8 @@ def gauss2D((x, y), amp, xo, yo, sigma_x, sigma_y, covar, offset):
     
     return g
 
-def gaussfit2D(im, initialp, ftol=1e-5):
+def gaussfit2D(im, initialp, ftol=1e-5, maxfev=5000):
+    """initalp = (amp, x0,y0, sx, yx, covar, offset)"""
     def g2d((x, y), amp, xo, yo, sigma_x, sigma_y, covar, offset):
         return gauss2D((x, y), amp, xo, yo,
                        sigma_x, sigma_y, covar, offset).ravel()
@@ -385,7 +386,7 @@ def gaussfit2D(im, initialp, ftol=1e-5):
 
     from scipy.optimize import curve_fit
     popt, pcov = curve_fit(g2d, (x, y), im.ravel(), p0=initialp,
-                           ftol=ftol, maxfev=5000)
+                           ftol=ftol, maxfev=maxfev)
                            
     model=gauss2D((x, y), *popt)
 
