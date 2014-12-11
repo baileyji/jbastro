@@ -464,8 +464,8 @@ def fitPSF(ec, guessLoc, fitwidth=20, verbose=False, sigma=5,
 
 def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
                 ordlocs=None, stepsize=20, fitwidth=20, plotalot=False,
-                medwidth=15, xylims=None, uncertainties=None, g=gain,
-                rn=readnoise, badpixelmask=None, retsnr=False, retfits=False,
+                medwidth=15, xylims=None, uncertainties=None, g=1.0,
+                rn=0.0, badpixelmask=None, retsnr=False, retfits=False,
                 max_ctr_move=6, errLim=8, thresh=100):
 #TODO: figure out what errLim should be
 #TODO: add new terms to the docs
@@ -3183,7 +3183,10 @@ def normalizeSpecFlat(flatdat, nspec=1, minsep=50, median_width=51, readnoise=40
     return masterflat
 
 
-def optspecextr_idl(frame, gain, readnoise, x1, x2, idlexec, clobber=True, tempframefn='tempframe.fits', specfn='tempspec.fits', scriptfn='temp_specextract.pro', IDLoptions="adjfunc='adjgauss', adjoptions={center:1,centerfit:1,centerdeg:3}, bgdeg=3", inmask=None):
+def optspecextr_idl(frame, gain, readnoise, x1, x2, idlexec, clobber=True,
+                    tempframefn='tempframe.fits', specfn='tempspec.fits',
+                    scriptfn='temp_specextract.pro',
+                    IDLoptions="adjfunc='adjgauss', adjoptions={center:1, centerfit:1, centerdeg:3}, bgdeg=3", inmask=None):
     """Run optimal spectral extraction in IDL; pass results to Python.
 
     :INPUTS:

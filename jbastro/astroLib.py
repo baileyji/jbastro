@@ -4,6 +4,7 @@ import astropy
 import math
 from great_circle_dist import dist_radec_fast
 
+SPEED_OF_LIGHT=299792458.0
 M2FS_FOV_DEG=29.0/60
 
 from astropy.io import fits
@@ -26,133 +27,7 @@ def crreject(im, **cosmics_settings):
     
     return c.mask.astype(np.uint8)
 
-def sex2dec(d,m,s,ra=False):
-    """ 
-    Convert string/int/float args to decimal degrees
-    remember -0 doesn't exist in python as an int
-    """
-    mul=15.0 if ra else 1.0
-    sign=math.copysign(1.0,float(d))
-    if sign<0:
-        return mul*(float(d) - float(m)/60.0 - float(s)/3600.0)
-    else:
-        return mul*(float(d) + float(m)/60.0 + float(s)/3600.0)
-
-def dec2sex(n, ra=False):
-    """ Convert decimal degrees to h, m, s or d, m ,s """
-    if type(n) not in (float, int):
-        raise ValueError('Must give d as float or int')
-    
-    sign=-1.0 if n < 0 else 1.0
-    n=abs(float(n))
-    if ra:
-        n/=15.0
-        hord=int(n)
-        m=int((n-hord)*60)
-        secs=(n-hord)*3600-m*60
-    
-    else:
-        hord=int(n)
-        m=int((n-hord)*60)
-        secs=(n-hord)*3600-m*60
-    
-    return sign*hord,m,secs,
-
-#def sexconvert(*args,**kwargs):
-#    """Hack to force Matt's rounding errors"""
-#    ra=kwargs.get('ra',False)
-#    dtype=kwargs.get('dtype',str)
-#    fmt=kwargs.get('fmt','{: 03.0f}:{:02}:{:07.4f}')
-#    if len(args)==1:
-#        x=args[0]
-#    elif len(args)==3:
-#        x=args[:3]
-#    else:
-#        raise ValueError('Unsupported args: {}',str(args))
-#    
-#    x=_sexconvert(x,dtype=float,ra=ra)
-#    myfmt='{: 03.0f}:{:02}:{:05.2f}' if ra else '{: 03.0f}:{:02}:{:04.1f}'
-#    x=_sexconvert(x,dtype=str,ra=ra,fmt=myfmt)
-#    return _sexconvert(x,dtype=dtype,ra=ra,fmt=fmt)
-
-def sexconvert(*args,**kwargs):
-    """convert a sexgesmal number to something """
-    ra=kwargs.get('ra',False)
-    dtype=kwargs.get('dtype',str)
-    fmt=kwargs.get('fmt','{: 03.0f}:{:02}:{:07.4f}')
-    if len(args)==1:
-        x=args[0]
-    elif len(args)==3:
-        x=args[:3]
-    else:
-        raise ValueError('Unsupported args: {}',str(args))
-
-    if dtype not in [str,float]:
-         raise ValueError('type {} unsupported',str(dtype))
-    
-    try:
-        x=float(x)
-    except (TypeError, ValueError):
-        pass
-
-    if type(x) == float:
-        if dtype==float:
-            return float(x)
-        else:
-            return fmt.format(*dec2sex(x,ra=ra))
-    elif type(x)==str:
-        x=x.strip()
-        x=x.split(':')
-        if len(x)==1:
-            x=x[0].split()
-        x=sex2dec(*x,ra=ra)
-        if dtype==float:
-            return x
-        else:
-            return fmt.format(*dec2sex(x,ra=ra))
-    elif len(x)==3:
-        try:
-            x=sex2dec(*x,ra=ra)
-        except Exception:
-            raise ValueError('Unsupported args: {}',str(args))
-        if dtype==float:
-            return x
-        else:
-            return fmt.format(*dec2sex(x,ra=ra))
-    else:
-        raise ValueError('Unsupported args: {}',str(args))
-
-def test_sexconvert():
-
-    def test_inner(ra_or_dec, strs, floats):
-        try:
-            #str->str
-            for i,v in enumerate(strs):
-                assert sexconvert(v, dtype=str, ra=ra_or_dec).strip()==v+'00'
-            #str->float
-            for i,v in enumerate(strs):
-                assert sexconvert(v, dtype=float, ra=ra_or_dec)==floats[i]
-            #float->float
-            for i,v in enumerate(floats):
-                assert sexconvert(v, dtype=float, ra=ra_or_dec)==v
-            #float->str
-            for i,v in enumerate(floats):
-                assert sexconvert(v, dtype=str, ra=ra_or_dec).strip()==strs[i]+'00'
-        except AssertionError,e:
-            print str(e)
-            import ipdb;ipdb.set_trace()
-    test_inner(True,
-               ['11:12:09.85','-00:34:32.02','00:34:32.02','-10:34:32.02'],
-               [15*(11+12.0/60+9.85/3600), -15*(0+34.0/60+32.02/3600),
-                15*(0+34.0/60+32.02/3600), -15*(10+34.0/60+32.02/3600)])
-
-    test_inner(False,
-               ['71:12:09.85','-00:34:32.02','00:34:32.02','-80:34:32.02'],
-               [(71+12.0/60+9.85/3600), -(0+34.0/60+32.02/3600),
-                (0+34.0/60+32.02/3600), -(80+34.0/60+32.02/3600)])
-
-test_sexconvert()
-
+from astrolibsimple import sexconvert, dec2sex, sex2dec
 
 def cycscatter(*args,**kwargs):
     """Make a cyclic scatter plot"""
@@ -227,9 +102,7 @@ def RtoV(Rabs):
     return np.interp(Rabs,xgrid,ygrid)
 
 
-def roundTo(x, value):
-    """ Round to the nearest value """
-    return int(round(x/value))*value
+from astrolibsimple import roundTo
 
 
 #def expTime(paramTriple):
@@ -478,6 +351,22 @@ def in_field(coord, stars, fov=M2FS_FOV_DEG, square=False, mask=False):
     else:
         return np.where(cand)[0]
 
+def gauss2dmodel(xw, yw, amp, xo, yo, sigma_x, sigma_y, covar, offset):
+    xo = float(xo)
+    yo = float(yo)
+    
+    x = np.arange(xw+1,dtype=np.float)-xw/2 + xo
+    y = np.arange(yw+1,dtype=np.float)-yw/2 + yo
+    x, y = np.meshgrid(x, y)
+    
+    rho=covar/(sigma_x*sigma_y)
+    
+    z=((x-xo)/sigma_x)**2 - 2*rho*(x-xo)*(y-yo)/(sigma_x/sigma_y) + ((y-yo)/sigma_y)**2
+    
+    g=amp*np.exp(-z/(2*(1-rho**2)))+ offset
+    
+    return g
+
 def gaussfit(xdata, ydata):
     def gauss_quad(x, a0, a1, a2, a3, a4, a5):
         z = (x - a1) / a2
@@ -489,6 +378,35 @@ def gaussfit(xdata, ydata):
 
     return (parameters, gauss_quad(xdata, *parameters))
 
+def gauss2D((x, y), amp, xo, yo, sigma_x, sigma_y, covar, offset):
+    xo = float(xo)
+    yo = float(yo)
+    
+    rho=covar/(sigma_x*sigma_y)
+    
+    z=((x-xo)/sigma_x)**2 - 2*rho*(x-xo)*(y-yo)/(sigma_x/sigma_y) + ((y-yo)/sigma_y)**2
+    
+    g=amp*np.exp(-z/(2*(1-rho**2)))+ offset
+    
+    return g
+
+def gaussfit2D(im, initialp, ftol=1e-5, maxfev=5000):
+    """initalp = (amp, x0,y0, sx, yx, covar, offset)"""
+    def g2d((x, y), amp, xo, yo, sigma_x, sigma_y, covar, offset):
+        return gauss2D((x, y), amp, xo, yo,
+                       sigma_x, sigma_y, covar, offset).ravel()
+
+    x = np.arange(im.shape[0],dtype=np.float)
+    y = np.arange(im.shape[1],dtype=np.float)
+    x, y = np.meshgrid(x, y)
+
+    from scipy.optimize import curve_fit
+    popt, pcov = curve_fit(g2d, (x, y), im.ravel(), p0=initialp,
+                           ftol=ftol, maxfev=maxfev)
+                           
+    model=gauss2D((x, y), *popt)
+
+    return model, popt
 
 
 def aniscatter(x,y, **kwargs):
@@ -564,20 +482,18 @@ def pltradec(thing,clear=False,lw=0,m='.',c='k',fig=None):
     plt.xlabel('RA')
     plt.show()
 
-def dm2d(dm):
-    return int(round(10.0**((dm+5.0)/5.0)))
 
-def d2dm(parsec):
-    return -5 + 5.0*np.log10(parsec)
+from astrolibsimple import dm2d, d2dm
 
-
-def baryvel_los(obstime, coords, observatory_loc):
+def baryvel_los(obstime, coords, observatory_loc, sun=False):
     """
     vvec (output vector(4))
     Various projections of the barycentric velocity
 	correction, expressed in km/sec. The four elements in the vector are radial,
  	tangential, right ascension, and declination projections respectively.
  	Add vvec(0) to the observed velocity scale to shift it to the barycenter.
+    
+    sun=True to get shift of scattered light from sun. Coords don't matter
     """
     from PyAstronomy.pyasl import baryvel
     from astropy.coordinates import Longitude, ICRS
@@ -618,7 +534,11 @@ def baryvel_los(obstime, coords, observatory_loc):
      'clay':{
     	  'lat':-0.5063938434309143,
     	  'lon':-1.2338154852026897,
-    	  'ht':2450.0}
+          'ht':2450.0},
+     'clay_jb':{
+          'lat':-0.506392081, #  .364" diff ~22 meters different
+          'lon':1.23381854, # .63" diff
+          'ht':2406.1}
     }
     if type(observatory_loc)!=str:
         lat, lon, ht =observatory_loc
@@ -644,6 +564,12 @@ def baryvel_los(obstime, coords, observatory_loc):
 
     time.delta_ut1_utc = iers_a.ut1_utc(time)
 
+    #Local rotaion rate
+    vrot = 465.102 * ((1.0 + 1.57e-7 * ht) /
+                     np.sqrt(1.0 + 0.993305 * np.tan(lat)**2))
+
+    #Calculate barycentric velocity of earth.
+    velh, velb= baryvel(time.jd,0.0)
 
     #Make sure coords is an ICRS object
     if type(coords) != ICRS:
@@ -653,15 +579,8 @@ def baryvel_los(obstime, coords, observatory_loc):
                     unit=(u.degree, u.degree),
                     equinox=Time('J2000', scale='utc'))
 
-    #Local rotaion rate
-    vrot = 465.102 * ((1.0 + 1.57e-7 * ht) /
-                     np.sqrt(1.0 + 0.993305 * np.tan(lat)**2))
-
     #Precess coordinates to j
     pcoords=coords.fk5.precess_to(time)
-
-    #Calculate barycentric velocity of earth.
-    velh, velb= baryvel(time.jd,0.0)
 
     #Find lmst of observation
     lmst=time.sidereal_time('mean')
@@ -684,31 +603,212 @@ def baryvel_los(obstime, coords, observatory_loc):
     #Return
     return [dvr, dvt, dva, dvd]
 
-def avgstd(values, weights=None):
+def photometric_uncertainty(wave, spec, snr=None, mask=None):
+    """Return photometric uncertainty in spectrum in m/s."""
+    
+    if type(snr)==type(None):
+        weight=np.ones_like(wave,dtype=np.float)
+    elif len(snr)==1:
+        weight=np.zeros_like(wave,dtype=np.float)+snr[0]
+    else:
+        assert len(snr)==len(weight)
+        weight=snr
+
+    dellam = np.abs(wave[1:]-wave[:-1])
+    dv = SPEED_OF_LIGHT*dellam/wave[:-1]
+    di = np.abs(spec[1:]-spec[:-1])
+    didv = di/dv
+    pixel_sigma = didv * weight
+    if type(mask) !=None:
+        pixel_sigma[mask[1:] | mask[:-1]]=0.0
+    pixel_sigma[~np.isfinite(pixel_sigma)]=0.0
+
+    return 1.0 / np.sqrt(np.sum(pixel_sigma**2.0))
+
+def broaden(wave, spec, dl):
+    """ 
+    Broaden a spectrum by a gaussian of FWHM dl
+    
+    Sepectrum should be padded by ~ 5 FWHM on either end
+    """
+
+    sig = dl/(2.0*np.sqrt(2 * np.log(2)))
+
+    n=np.ceil((wave.max()-wave.min())/(sig*0.1))
+
+    w_lin = np.arange(n, dtype=float)*sig*0.1+wave.min()
+    from scipy.interpolate import InterpolatedUnivariateSpline as IUS
+    s_lin = IUS(wave, spec)(w_lin)
+
+    k_x=np.arange(101, dtype=float)*0.1*sig - 5.0*sig
+
+    kernel = np.exp(-0.5*(k_x/sig)**2)/(sig*np.sqrt(2.0*np.pi))
+
+    import scipy.signal
+    broadened=scipy.signal.fftconvolve(s_lin, kernel,'same')*0.1*sig
+
+    return w_lin, broadened
+
+def avgstd(values, weights=None,axis=None):
     """
     Return the weighted average and standard deviation.
 
     values, weights -- Numpy ndarrays with the same shape.
     """
-    average = np.average(values, weights=weights)
-    variance = np.average((values-average)**2, weights=weights)
+    average = np.average(values, weights=weights,axis=axis)
+    variance = np.average((values-average)**2, weights=weights,axis=axis)
     return (average, np.sqrt(variance))
-
 
 def color_z_plot(x,y,z, cmap_name='gist_rainbow', lim=1e100, psym='o'):
     oset=z-np.median(z)
-    good=(abs(oset)<lim)
-    cmap=cm.get_cmap(cmap_name)
+    good=(np.abs(oset)<lim)
+    cmap=plt.cm.get_cmap(cmap_name)
     c=oset[good]- oset[good].min()
     c=(255*c/c.max()).round().astype(int).clip(0,255)
 
-    for i,ci in enumerate(c): plot(x[good][i], y[good][i],'o',c=cmap(ci))
-    plot(x[oset<-lim], y[oset<-lim], psym, c=cmap(0))
-    plot(x[oset>lim], y[oset>lim], psym, c=cmap(255))
+    for i,ci in enumerate(c): plt.plot(x[good][i], y[good][i],'o',c=cmap(ci))
+    plt.plot(x[oset<-lim], y[oset<-lim], psym, c=cmap(0))
+    plt.plot(x[oset>lim], y[oset>lim], psym, c=cmap(255))
 
-    sm=cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(
+    sm=plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(
                            vmin=z[good].min(), vmax=z[good].max()))
     sm._A=[]
-    colorbar(sm)
+    plt.colorbar(sm)
+
+def binned_xy_plot(x,y,nbin=10):
+    x=np.array(x)
+    y=np.array(y)
+    
+    use=np.isfinite(x) & np.isfinite(y)
+    x=x[use]
+    y=y[use]
+
+    n, _ = np.histogram(x, bins=nbin)
+    sy, _ = np.histogram(x, bins=nbin, weights=y)
+    sy2, _ = np.histogram(x, bins=nbin, weights=y*y)
+    mean = sy / n
+    std = np.sqrt(sy2/n - mean**2)
+    
+    plt.plot(x, y, 'bo')
+    plt.errorbar((_[1:] + _[:-1])/2, mean, yerr=std, fmt='r-')
+
+def casagrandeTeff(color, sys='BV', feh=0.0):
+    data={'BV':{'mr':(-5.0, 0.4), 'xr':(0.18, 1.29), 'e':82,
+                'ai':(0.5665, 0.4809, -0.0060, -0.0613, -0.0042, 0.0035)},
+          'VRc':{'mr':(-5.0, 0.3), 'xr':(0.24, 0.80),'e':59,
+                 'ai':(0.4386, 1.4614, -0.7014, -0.0807, 0.0142, 0.0012)},
+          'RcIc':{'mr':(-5.0, 0.3), 'xr':(0.23, 0.68),'e':42,
+                  'ai':(0.3296, 1.9716, -1.0225, -0.0298, 0.0329, 0.0011)},
+          'VIc':{'mr':(-5.0, 0.3), 'xr':(0.46, 1.47), 'e':33,
+                 'ai':(0.4033, 0.8171, -0.1987, -0.0409, 0.0319, 0.0025)},
+          'VJ':{'mr':(-5.0, 0.4), 'xr':(0.61, 2.44), 'e':25,
+                'ai':(0.4669, 0.3849, -0.0350, -0.0140, 0.0225, 0.0016)},
+          'VH':{'mr':(-5.0, 0.4), 'xr':(0.67, 3.01), 'e':132,
+                'ai':(0.5251, 0.2553, -0.0119, -0.0187, 0.0410, 0.002)},
+          'VKs':{'mr':(-5.0, 0.4), 'xr':(0.78, 3.15), 'e':79,
+                'ai':(0.5057, 0.2600, -0.0146, -0.0131, 0.0288, -0.0087)},
+          'JKs':{'mr':(-5.0, 0.4), 'xr':(0.07, 0.80), 'e':43,
+                 'ai':(0.6393, 0.6104,  0.0920, -0.0330, 0.0291, -0.0009)},
+          'BtVt':{'mr':(-2.7, 0.4), 'xr':(0.19, 1.49), 'e':26,
+                  'ai':(0.5839, 0.4000, -0.0067, -0.0282, -0.0346, 0.0021)},
+          'VtJ':{'mr':(-2.7, 0.4), 'xr':(0.77, 2.56), 'e':18,
+                 'ai':(0.4525, 0.3797, -0.0357, -0.0082, 0.0123, -0.0001)},
+          'VtH':{'mr':(-2.7, 0.4), 'xr':(0.77, 3.16), 'e':62,
+                 'ai':(0.5286, 0.2354, -0.0073, -0.0182, 0.0401, -0.0055)},
+          'VtKs':{'mr':(-2.4, 0.4), 'xr':(0.99, 3.29), 'e':73,
+                  'ai':(0.4892, 0.2634, -0.0165, -0.0121, 0.0249, -0.0055)},
+          'by':{'mr':(-3.7, 0.5), 'xr':(0.18, 0.72), 'e':62,
+                'ai':(0.5796, 0.4812,  0.5747, -0.0633, 0.0042, -0.0015)}}
+    if sys not in data:
+        raise ValueError('Valid systems are {}'.format(', '.join(data.keys())))
+    dat=data[sys]
+    if feh < dat['mr'][0] or feh > dat['mr'][1]:
+        raise ValueError('Valid [Fe/H] range is {}'.format(dat['mr']))
+    if color < dat['xr'][0] or color > dat['xr'][1]:
+        raise ValueError('Valid color range is {}'.format(dat['xr']))
+    a0,a1,a2,a3,a4,a5=dat['ai']
+    return (5040.0/(a0 + a1*color + a2*color**2 + a3*color*feh +
+                    a4*feh + a5*feh**2),
+            dat['e']+17)
+
+
+
+#def plotSpectrum(y,Fs):
+#    """
+#        Plots a Single-Sided Amplitude Spectrum of y(t)
+#        """
+#    n = len(y) # length of the signal
+#    k = arange(n)
+#    T = n/Fs
+#    frq = k/T # two sides frequency range
+#    frq = frq[range(n/2)] # one side frequency range
+#    
+#    Y = fft.fft(y)/n # fft computing and normalization
+#    Y = Y[range(n/2)]
+#    
+#    plot(frq,abs(Y)) # plotting the spectrum
+#    xlabel('Freq (Hz)')
+#    ylabel('|Y(freq)|')
+#
+#Fs = 150.0;  # sampling rate
+#Ts = 1.0/Fs; # sampling interval
+#t = arange(0,1,Ts) # time vector
+#
+#ff = 5;   # frequency of the signal
+#y = sin(2*pi*ff*t)
+#
+#subplot(2,1,1)
+#plot(t,y)
+#xlabel('Time')
+#ylabel('Amplitude')
+#subplot(2,1,2)
+#plotSpectrum(y,Fs)
+#show()
+
+def sigma_clip_polyfit(x, y, power, sig=3, sigu=None, sigl=None, iter=1):
+
+
+    
+    if sigl==None:
+        sigl=sig
+    if sigu==None:
+        sigu=sig
+    
+    good=np.ones_like(x,dtype=bool)
+    iter_left=iter
+    while iter_left>0:
+    
+        cc=np.polyfit(x[good], y[good], power)
+        deviation=y-np.poly1d(cc)(x)
+        stdev=sqrt((deviation**2).sum())
+        good = (deviation >= -sigl * stdev ) & (deviation <= sigu * stdev)
+        iter_left-=1
+#        figure(3)
+#        plot(x,y,'r.')
+#        plot(x[good],y[good],'*')
+#        figure(4)
+#        plot(x,deviation,'o')
+#        axhline(-sigl * stdev)
+#        axhline( sigu * stdev)
+#        raw_input('?')
+
+    ret=np.poly1d(cc)
+
+#    from astropy.stats import sigma_clip
+#    xx=np.arange(x.shape[0])
+#    cenfunc = lambda yi: poly1d(np.ma.polyfit(xx, yi, power))(xx)
+#    clipped=sigma_clip(y, sig=sig, iters=iter, cenfunc=cenfunc,
+#                       axis=None, copy=True)
+#    sc_ret=np.poly1d(np.polyfit(x, clipped, power))
+
+    return ret
+
+
+#clf();mpoly,scpoly=sigma_clip_polyfit(xx,yy,1,sig=1, sigu=.2,iter=10);plot(sorted(xx),mpoly(sorted(xx)),'b');plot(xx,yy,'r.');ylim(0,10000)
+#
+#;plot(sorted(xx),scpoly(sorted(xx)),'--g')
+
+
+
 
 
