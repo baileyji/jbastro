@@ -67,9 +67,6 @@ def share_memory(a, b):
         return 0
 
 
-
-
-
 #;MUST NOT MODIFY   sin   as it will cause problems elsewhere (noticed 3/10/09 -JB)
 #
 #;Power (2) - polynomial order to use
@@ -179,3 +176,4 @@ def inpaint_mask(im_in,mask_in):
     
     return im
 
+>>>>>>> develop
