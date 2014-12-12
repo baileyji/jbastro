@@ -175,5 +175,3 @@ def inpaint_mask(im_in,mask_in):
         not_nans=~nans
     
     return im
-
->>>>>>> develop
