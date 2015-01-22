@@ -6,7 +6,7 @@ pyastro_dep_link=('https://github.com/sczesla/PyAstronomy/tarball/'
                   'v_0-7-0#egg=PyAstronomy-0.7.0')
 
 setup(name='jbastro',
-      version='0.3',
+      version='0.4',
       description='python astro library',
       author='Jeb Bailey',
       author_email='baileyji@umich.edu',
