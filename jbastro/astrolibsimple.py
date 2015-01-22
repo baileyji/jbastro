@@ -13,7 +13,9 @@ def sex2dec(d,m,s,ra=False):
         return mul*(float(d) + float(m)/60.0 + float(s)/3600.0)
 
 def dec2sex(n, ra=False):
-    """ Convert decimal degrees to h, m, s or d, m ,s """
+    """ Convert decimal degrees to h, m, s or d, m ,s
+    slips seconds at the .1uas level
+    """
     if type(n) not in (float, int):
         raise ValueError('Must give d as float or int')
     
@@ -21,15 +23,31 @@ def dec2sex(n, ra=False):
     n=abs(float(n))
     if ra:
         n/=15.0
-        hord=int(n)
-        m=int((n-hord)*60)
-        secs=(n-hord)*3600-m*60
-    
-    else:
-        hord=int(n)
-        m=int((n-hord)*60)
-        secs=(n-hord)*3600-m*60
-    
+#        hord=int(n)
+#        m=int((n-hord)*60)
+#        secs=(n-hord)*3600-m*60
+#
+#    else:
+
+    hord=int(n)
+    m=int((n-hord)*60)
+    if m >=60:
+        hord+=m/60
+        m-=m - m % 60
+    secs=(n-hord)*3600-m*60
+
+#    import ipdb;ipdb.set_trace()
+    if 60-secs < .00001: secs=60.0
+
+    if secs>=60:
+        isec=int(secs)
+        m+=isec/60
+        secs-=isec - isec % 60
+
+    if m >=60:
+        hord+=m/60
+        m-=m - m % 60
+
     return sign*hord,m,secs,
 
 #def sexconvert(*args,**kwargs):
@@ -50,7 +68,7 @@ def dec2sex(n, ra=False):
 #    return _sexconvert(x,dtype=dtype,ra=ra,fmt=fmt)
 
 def sexconvert(*args,**kwargs):
-    """convert a sexgesmal number to something """
+    """convert a sexgesmal number to something"""
     ra=kwargs.get('ra',False)
     dtype=kwargs.get('dtype',str)
     fmt=kwargs.get('fmt','{: 03.0f}:{:02}:{:07.4f}')

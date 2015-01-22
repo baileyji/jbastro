@@ -1,8 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.signal
+from .robust import *
 
-def rangify(data):
+
+def rangify(data,delim=', '):
     """Stackoverflow"""
     from itertools import groupby
     from operator import itemgetter
@@ -13,9 +15,9 @@ def rangify(data):
             str_list.append('%d-%d' % (ilist[0], ilist[-1]))
         else:
             str_list.append('%d' % ilist[0])
-    return ', '.join(str_list)
+    return delim.join(str_list)
 
-def derangify(s):
+def derangify(s,delim=','):
     """
     Takes a range in form of "a-b" and generate a list of numbers between 
     a and b inclusive.
@@ -27,12 +29,11 @@ def derangify(s):
     """
     s="".join(s.split())#removes white space
     r=set()
-    for x in s.split(','):
+    for x in s.split(delim):
         t=x.split('-')
         if len(t) not in [1,2]:
-            raise SyntaxError("hash_range is given its "
-                              "arguement as "+s+" which seems not "
-                              "correctly formated.")
+            raise SyntaxError("'{}'".format(s)+
+                              "does not seem to be derangeifyable")
         if len(t)==1:
             r.add(int(t[0]))
         else:
@@ -66,24 +67,17 @@ def share_memory(a, b):
     else:
         return 0
 
-
-#;MUST NOT MODIFY   sin   as it will cause problems elsewhere (noticed 3/10/09 -JB)
-#
-#;Power (2) - polynomial order to use
-#; min_good_frac (0.5) - quit when this fraction of spectrum is left
-#; mask - bytarray(n_elements(s)) 1s indicate points in spectrum to omit from
-#;  continuum search 
-#;plot - shoe progress plots, must push enter to advance
-#; coeff - polynomial coefficients of the norm to feed into poly()
-#; Procedure: Fit a polynomial, find the bits above the curve, repeat
-#; quit when less than min_good_frac of the points are left in the spectrum,
-#; clearly this algorithm won't play well with emission lines
-import scipy.signal
-import numpy as np
-from .robust import *
 def normspec(sin, doplot=False, min_good_frac=.05, poly_pow=7, maskin=None,
              sigmau=2.0, sigmal=1.0, region=None, med_wid=3, maxreps=5,
              robust=True):
+    """
+    Normalize a spectrum
+    
+    Fit a polynomial, find the bits within sigmal and sigmau of the
+    curve, repeat. quit when less than min_good_frac of the points are left
+    in the data.
+    """
+    
     w1=0 #;window 1
     w2=1 #;window 2
     
@@ -175,3 +169,16 @@ def inpaint_mask(im_in,mask_in):
         not_nans=~nans
     
     return im
+
+
+def stddev_bias_corr(n):
+    if n == 1:
+        corr=1.0
+    else:
+        lut=[0.7978845608,0.8862269255,0.9213177319,0.9399856030,0.9515328619,
+             0.9593687891,0.9650304561,0.9693106998,0.9726592741,1.0]
+        lut_ndx=max(min(n-2,len(lut)-1),0)
+        
+        corr=lut[lut_ndx]
+
+    return 1.0/corr
