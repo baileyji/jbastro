@@ -170,3 +170,15 @@ def inpaint_mask(im_in,mask_in):
     
     return im
 
+
+def stddev_bias_corr(n):
+    if n == 1:
+        corr=1.0
+    else:
+        lut=[0.7978845608,0.8862269255,0.9213177319,0.9399856030,0.9515328619,
+             0.9593687891,0.9650304561,0.9693106998,0.9726592741,1.0]
+        lut_ndx=max(min(n-2,len(lut)-1),0)
+        
+        corr=lut[lut_ndx]
+
+    return 1.0/corr

@@ -15,6 +15,12 @@ class PrettifyHandler(mechanize.BaseHandler):
         return response
 
 fluxdata={
+#http://www.solarham.net/averages.htm
+    ('December' ,2014): 158.7,
+    ('November' ,2014): 155.2,
+    ('October'  ,2014): 153.7,
+    ('September',2014): 146.1,
+    ('August'   ,2014): 124.7,
     ('July'     ,2014): 137.3,
     ('June'     ,2014): 122.2,
     ('May'      ,2014): 130.0,
@@ -60,7 +66,7 @@ fluxdata={
     ('January'  ,2011):  83.7,
     ('December' ,2010):  84.3}
 
-def query_skycalc(ra, dec, utc, obs_lat_deg, obs_lon_deg, outfile):
+def query_skycalc(ra, dec, utc, obs_lat_deg, obs_lon_deg, outfile, debug=False):
 
     #compute Ephemeris data
     targ=ephem.Equatorial(ra, dec)
@@ -83,6 +89,8 @@ def query_skycalc(ra, dec, utc, obs_lat_deg, obs_lon_deg, outfile):
 
 
     helio_ecl_lon=np.rad2deg(ecl.lon)
+    #This is a guess, it could be that I've got the signs flipped
+    if helio_ecl_lon >180: helio_ecl_lon=-(360-helio_ecl_lon)
     ecl_lat=np.rad2deg(ecl.lat)
 
 
@@ -101,7 +109,7 @@ def query_skycalc(ra, dec, utc, obs_lat_deg, obs_lon_deg, outfile):
     night_elapsed=obs.date.datetime()-obs.previous_setting(sun).datetime()
 
     # 1,2, 3
-    night_third=ceil((float(night_elapsed.seconds)/night_length.seconds) * 3.0)
+    night_third=np.ceil((float(night_elapsed.seconds)/night_length.seconds) * 3.0)
 
     try:
         solar_flux=fluxdata[(obs.date.datetime().strftime('%B'),
@@ -161,6 +169,44 @@ def query_skycalc(ra, dec, utc, obs_lat_deg, obs_lon_deg, outfile):
     br['SKYMODEL.WAVELENGTH.GRID.MODE']=['fixed_spectral_resolution']
     br['SKYMODEL.WAVELENGTH.RESOLUTION']='500000'
     br['SKYMODEL.LSF.KERNEL.TYPE']=['none']
+
+    if debug:
+        
+        print 'SKYMODEL.TARGET.ALT={}'.format(targ_alt)
+        print 'SKYMODEL.TARGET.AIRMASS={}'.format(targ_X)
+        
+        
+        print 'SKYMODEL.SEASON={}'.format(month_pair)
+        print 'SKYMODEL.TIME={}'.format(int(night_third))
+        print 'SKYMODEL.PWV.MODE=season'
+        print 'SKYMODEL.MSOLFLUX={}'.format(solar_flux)
+        
+        
+        print 'SKYMODEL.INCL.MOON={}'.format(do_moon)
+        print 'SKYMODEL.MOON.SUN.SEP={}'.format(sum_moon_sep)
+        print 'SKYMODEL.MOON.TARGET.SEP={}'.format(moon_targ_sep)
+        print 'SKYMODEL.MOON.ALT={}'.format(moon_alt)
+        print 'SKYMODEL.MOON.EARTH.DIST=1.0000'
+        print 'SKYMODEL.ECL.LON={}'.format(helio_ecl_lon)
+        print 'SKYMODEL.ECL.LAT={}'.format(ecl_lat)
+        
+        print 'SKYMODEL.INCL.STARLIGHT=True'
+        print 'SKYMODEL.INCL.ZODIACAL=True'
+        print 'SKYMODEL.INCL.MOLEC.EMIS.LOWER.ATM=True'
+        print 'SKYMODEL.INCL.MOLEC.EMIS.UPPER.ATM=True'
+        print 'SKYMODEL.INCL.AIRGLOW=True'
+        
+        print 'SKYMODEL.INCL.THERMAL=False'
+        print 'SKYCALC.RAD.PLOT.FLAG=False'
+        print 'SKYCALC.TRANS.PLOT.FLAG=False'
+        print 'SKYCALC.MAG.FLAG=False'
+        print 'SKYCALC.LSF.PLOT.FLAG=False'
+        
+        print 'SKYMODEL.WAVELENGTH.MIN=650'
+        print 'SKYMODEL.WAVELENGTH.MAX=750'
+        print 'SKYMODEL.WAVELENGTH.GRID.MODE=fixed_spectral_resolution'
+        print 'SKYMODEL.WAVELENGTH.RESOLUTION=500000'
+        print 'SKYMODEL.LSF.KERNEL.TYPE=none'
 
     print('Submitting form')
     br.submit()

@@ -232,7 +232,7 @@ class cosmicsimage:
 		
 		# The medians will be evaluated in this padarray, skipping the np.Inf.
 		# Now in this copy called padarray, we also put the saturated stars to np.Inf, if available :
-		if self.satstars != None:
+		if self.satstars.any():
 			padarray[2:w+2,2:h+2][self.satstars] = np.Inf
 			# Viva python, I tested this one, it works...
 		
@@ -446,7 +446,7 @@ class cosmicsimage:
 			print "  %5i candidate pixels" % nbcandidates
  		
  		# At this stage we use the saturated stars to mask the candidates, if available :
- 		if self.satstars != None:
+ 		if self.satstars.any():
  			if verbose:
  				print "Masking saturated stars ..."
  			candidates = np.logical_and(np.logical_not(self.satstars), candidates)
@@ -499,7 +499,7 @@ class cosmicsimage:
 		finalsel = np.logical_and(sp > self.sigcliplow, finalsel)
 		
 		# Again, we have to kick out pixels on saturated stars :
-		if self.satstars != None:
+		if self.satstars.any():
  			if verbose:
  				print "Masking saturated stars ..."
  			finalsel = np.logical_and(np.logical_not(self.satstars), finalsel)

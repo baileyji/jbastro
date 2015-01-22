@@ -659,7 +659,8 @@ def avgstd(values, weights=None,axis=None):
     variance = np.average((values-average)**2, weights=weights,axis=axis)
     return (average, np.sqrt(variance))
 
-def color_z_plot(x,y,z, cmap_name='gist_rainbow', lim=1e100, psym='o'):
+def color_z_plot(x,y,z, cmap_name='gist_rainbow', lim=1e100, psym='o',
+                 label=None):
     oset=z-np.median(z)
     good=(np.abs(oset)<lim)
     cmap=plt.cm.get_cmap(cmap_name)
@@ -673,7 +674,9 @@ def color_z_plot(x,y,z, cmap_name='gist_rainbow', lim=1e100, psym='o'):
     sm=plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(
                            vmin=z[good].min(), vmax=z[good].max()))
     sm._A=[]
-    plt.colorbar(sm)
+    cbar=plt.colorbar(sm)
+    if label is not None: cbar.set_label(label)
+    return sm,cbar
 
 def binned_xy_plot(x,y,nbin=10):
     x=np.array(x)
