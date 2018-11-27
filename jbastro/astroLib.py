@@ -8,7 +8,36 @@ SPEED_OF_LIGHT=299792458.0
 M2FS_FOV_DEG=29.0/60
 
 from astropy.io import fits
-from . lacosmics.cosmics import cosmicsimage
+from .lacosmics.cosmics import cosmicsimage
+
+def do_kde(y, x=None, scipykde=False, norm=False):
+    if scipykde:
+        from scipy.stats import gaussian_kde as gkde
+        pdf=gkde(y)(x)
+        bw=None
+    else:
+        from .kde.kde import kde
+        bw,x,pdf=kde(y)
+
+    dx=x[1]-x[0]
+    
+    peaki=pdf.argmax()
+    peakx=x[peaki]
+    nval=(pdf*dx).sum()
+    try:
+        ret=[]
+        for i in xrange(x.size):
+            if i<=peaki: ret.append((pdf[:i+1]*dx).sum()/nval)
+            if i>peaki: ret.append((pdf[i-1:]*dx).sum()/nval)
+        ret=np.array(ret)
+        foo=x[np.abs(np.array(ret)-.16).argsort()]
+        msig,psig=foo[foo<peakx][0],foo[foo>peakx][0] #1sigma values
+    except IndexError:
+        msig,psig,ret=np.nan,np.nan,None
+    if norm: pdf/=pdf.max()
+
+    return x,pdf,(msig,psig),{'ppf':ret,'bw':bw,'norm':nval}
+
 
 def crreject(im, **cosmics_settings):
     """Give a seqno or a path to a quad if file set"""
@@ -124,26 +153,47 @@ from astrolibsimple import roundTo
 #        t = (snr / (175./np.sqrt(3) * 10**(.2*(13.5-mag))))**2.
 #    return (snr, mag, t)
 
+#see seeing_light_loss.nb, values assume a .1" miscentration, though
+#that effect is very weak
+_magloss=np.array(((0.0,0.0), (0.2,0.0),(.4,.05),(.484,.1),(.6,.2),
+                  (.688,.3),(.776,.4),(.84,.5),(.927,.6),(1.01,.7),
+                  (1.085,.8),(1.16,.9),(1.239,1.0),(1.619,1.5),
+                  (2.189,2.0))).T
+from scipy.interpolate import InterpolatedUnivariateSpline as IUS
 
-def expTime(paramTriple, seeing=1.0):
-    """ (SNR, mag, expTime) """
+_magloss_spline=IUS(_magloss[0], _magloss[1])
+def seeing_mag_loss(seeing):
+    if seeing > _magloss[0].max() or seeing < _magloss[0].min():
+        raise ValueError('Seeing out of bounds')
+    return _magloss_spline(seeing)
+
+def expTime(paramTriple, seeing=1.0, zero_point=18.3, slit=45, fibtpt=.6,
+            aperpix=0.05, teltpt=.8):
+    """ (SNR, mag, expTime) 
+    zero_point is 1 e/s/A with wide open slit
+    36% of light gets through with 45 um slit
+    
+    """
     snr, mag, t = paramTriple
 
-    zp= .2 * .5 # R factor * e/s guess per Mario
-    zpm=17.5
-    zpm-=(seeing-1.0)*2
+    slit_tpt={45:.36,180:1.0}
+    slit_tpt={45: .34, 58: .45, 75: .57,180:1.0}
+    if slit not in slit_tpt.keys(): raise ValueError('Slit not supported.')
     
-    #TODO proper seeing correction
-    # integrate moffat with seeing aperture and compare to arerture size
+    zpcor=slit_tpt[slit]*aperpix*fibtpt*teltpt
+    
+    zpm=zero_point
+    zpm-=seeing_mag_loss(seeing)
+    
     if snr is None:
-        snr = np.sqrt(zp * 10**((mag-zpm)/-2.5) * 3600 * t )
+        snr = np.sqrt(zpcor * 10**((mag-zpm)/-2.5) * 3600 * t )
     if mag is None:
         if snr <=0:
             mag=float('inf')
         else:
-            mag=np.log10((snr**2)/zp/3600/t)*-2.5 +zpm
+            mag=np.log10((snr**2)/zpcor/3600/t)*-2.5 +zpm
     if t is None:
-        t=(snr**2)/(zp * 10**((mag-zpm)/-2.5) * 3600)
+        t=(snr**2)/(zpcor * 10**((mag-zpm)/-2.5) * 3600)
     return (snr, mag, t)
 
 
@@ -367,16 +417,36 @@ def gauss2dmodel(xw, yw, amp, xo, yo, sigma_x, sigma_y, covar, offset):
     
     return g
 
-def gaussfit(xdata, ydata):
-    def gauss_quad(x, a0, a1, a2, a3, a4, a5):
+#def gaussfit(xdata, ydata):
+#    """ fit a gaussian + quadratic to data, doesn't work"""
+#    def gauss_quad(x, a0, a1, a2, a3, a4, a5):
+#        z = (x - a1) / a2
+#        y = a0 * np.exp(-z**2 / a2) + a3 + a4 * x + a5 * x**2
+#        return y
+#
+#    from scipy.optimize import curve_fit
+#    parameters, covariance = curve_fit(gauss_quad, xdata, ydata)
+#
+#    return (parameters, gauss_quad(xdata, *parameters))
+
+
+def gaussfit(xdata, ydata, p0=None, sig=1,ret_e=False):
+    """ fit a gaussian + constant to data, p0=amp,ctr,sig,offset"""
+    def gauss(x, a0, a1, a2, a3):
         z = (x - a1) / a2
-        y = a0 * np.exp(-z**2 / a2) + a3 + a4 * x + a5 * x**2
+        y = a0 * np.exp(-z**2 / 2)+a3
         return y
 
-    from scipy.optimize import curve_fit
-    parameters, covariance = curve_fit(gauss_quad, xdata, ydata)
+    if p0 is None:
+        p0=(ydata.max()-ydata.min(),xdata[ydata.argmax()],sig,ydata.min())
 
-    return (parameters, gauss_quad(xdata, *parameters))
+    from scipy.optimize import curve_fit
+    parameters, covariance = curve_fit(gauss, xdata, ydata, p0=p0)
+
+    if ret_e:
+        return parameters, gauss(xdata, *parameters), np.sqrt(covariance.diagonal())
+    else:
+        return (parameters, gauss(xdata, *parameters))
 
 def gauss2D((x, y), amp, xo, yo, sigma_x, sigma_y, covar, offset):
     xo = float(xo)
@@ -390,7 +460,7 @@ def gauss2D((x, y), amp, xo, yo, sigma_x, sigma_y, covar, offset):
     
     return g
 
-def gaussfit2D(im, initialp, ftol=1e-5, maxfev=5000):
+def gaussfit2D(im, initialp, ftol=1e-5, maxfev=5000, retcov=False):
     """initalp = (amp, x0,y0, sx, yx, covar, offset)"""
     def g2d((x, y), amp, xo, yo, sigma_x, sigma_y, covar, offset):
         return gauss2D((x, y), amp, xo, yo,
@@ -406,7 +476,10 @@ def gaussfit2D(im, initialp, ftol=1e-5, maxfev=5000):
                            
     model=gauss2D((x, y), *popt)
 
-    return model, popt
+    if retcov:
+        return model, popt, pcov
+    else:
+        return model, popt
 
 
 def aniscatter(x,y, **kwargs):
@@ -485,7 +558,8 @@ def pltradec(thing,clear=False,lw=0,m='.',c='k',fig=None):
 
 from astrolibsimple import dm2d, d2dm
 
-def baryvel_los(obstime, coords, observatory_loc, sun=False):
+def baryvel_los(obstime, coords, observatory_loc, sun=False,
+                heliocentric=False, aORg='g'):
     """
     vvec (output vector(4))
     Various projections of the barycentric velocity
@@ -549,7 +623,7 @@ def baryvel_los(obstime, coords, observatory_loc, sun=False):
 
     #Make sure we've got the longitude in the time object to compute lmst
     time=obstime.copy()
-    if time.lon==None:
+    if time.lon==None or type(observatory_loc)!=str:
         time.lon=Longitude(lon, unit=u.radian)
 
     from astropy.utils.iers import IERS_A,IERS_A_URL
@@ -571,30 +645,57 @@ def baryvel_los(obstime, coords, observatory_loc, sun=False):
     #Calculate barycentric velocity of earth.
     velh, velb= baryvel(time.jd,0.0)
 
-    #Make sure coords is an ICRS object
-    if type(coords) != ICRS:
-        if coords[3]!=2000:
-            raise ValueError('Provide IRCS to handle equniox other than 2000')
-        coords=ICRS(coords[0], coords[1],
-                    unit=(u.degree, u.degree),
-                    equinox=Time('J2000', scale='utc'))
-
-    #Precess coordinates to j
-    pcoords=coords.fk5.precess_to(time)
-
     #Find lmst of observation
     lmst=time.sidereal_time('mean')
 
     #Calculation of geocentric velocity of observatory.
     velt = vrot * np.array([-np.sin(lmst.radian), np.cos(lmst.radian), 0.0])
 
-    #Calculation of barycentric velocity components.
-    sra = np.sin(pcoords.ra.radian)
-    sdec = np.sin(pcoords.dec.radian)
-    cra = np.cos(pcoords.ra.radian)
-    cdec = np.cos(pcoords.dec.radian)
-
+    #Calculate dv (what is dv?)
     dv = velb + velt * 1e-3
+
+    if sun or heliocentric:
+        dv = velh + velt * 1e-3
+
+    if sun:
+        import ephem
+        eo = ephem.Observer()
+        eo.lon = lon
+        eo.lat = lat
+        eo.elevation = 2450.0
+        eo.date = time.datetime
+        sunephem=ephem.Sun(eo)
+        
+        #Calculation of barycentric velocity components.
+        if aORg=='a':
+            sra = np.sin(sunephem.a_ra)
+            sdec = np.sin(sunephem.a_dec)
+            cra = np.cos(sunephem.a_ra)
+            cdec = np.cos(sunephem.a_dec)
+        else:
+            sra = np.sin(sunephem.g_ra)
+            sdec = np.sin(sunephem.g_dec)
+            cra = np.cos(sunephem.g_ra)
+            cdec = np.cos(sunephem.g_dec)
+    else:
+        #Make sure coords is an ICRS object
+        if type(coords) != ICRS:
+            if coords[3]!=2000:
+                raise ValueError('Provide IRCS to handle equniox other than 2000')
+            coords=ICRS(coords[0], coords[1],
+                        unit=(u.degree, u.degree),
+                        equinox=Time('J2000', scale='utc'))
+
+        #Precess coordinates to j
+        pcoords=coords.fk5.precess_to(time)
+
+        #Calculation of barycentric velocity components.
+        sra = np.sin(pcoords.ra.radian)
+        sdec = np.sin(pcoords.dec.radian)
+        cra = np.cos(pcoords.ra.radian)
+        cdec = np.cos(pcoords.dec.radian)
+
+
     dvr = dv[0]*cra*cdec + dv[1]*sra*cdec + dv[2]*sdec
     dva = -dv[0]*sra + dv[1]*cra
     dvd = -dv[0]*cra*sdec - dv[1]*sra*sdec + dv[2]*cdec
@@ -605,40 +706,44 @@ def baryvel_los(obstime, coords, observatory_loc, sun=False):
 
 def photometric_uncertainty(wave, spec, snr=None, mask=None):
     """Return photometric uncertainty in spectrum in m/s."""
-    
+    import ipdb;ipdb.set_trace()
     if type(snr)==type(None):
         weight=np.ones_like(wave,dtype=np.float)
-    elif len(snr)==1:
-        weight=np.zeros_like(wave,dtype=np.float)+snr[0]
+    elif type(snr) in [float,int]:
+        weight=np.zeros(len(wave)-1,dtype=np.float)+snr
     else:
-        assert len(snr)==len(weight)
-        weight=snr
-
+        assert len(snr)==len(wave)
+        weight=.5*(snr[1:]+snr[:-1])
+    
     dellam = np.abs(wave[1:]-wave[:-1])
-    dv = SPEED_OF_LIGHT*dellam/wave[:-1]
+    dv = SPEED_OF_LIGHT*dellam/wave.mean()
     di = np.abs(spec[1:]-spec[:-1])
     didv = di/dv
     pixel_sigma = didv * weight
-    if type(mask) !=None:
+    if mask is not None:
         pixel_sigma[mask[1:] | mask[:-1]]=0.0
     pixel_sigma[~np.isfinite(pixel_sigma)]=0.0
 
     return 1.0 / np.sqrt(np.sum(pixel_sigma**2.0))
 
-def broaden(wave, spec, dl):
+def broaden(wave, spec, dl, usepya=True):
     """ 
-    Broaden a spectrum by a gaussian of FWHM dl
+    Broaden a spectrum by a gaussian of FWHM dl, uses IUS
     
     Sepectrum should be padded by ~ 5 FWHM on either end
     """
-
+    
     sig = dl/(2.0*np.sqrt(2 * np.log(2)))
-
-    n=np.ceil((wave.max()-wave.min())/(sig*0.1))
-
-    w_lin = np.arange(n, dtype=float)*sig*0.1+wave.min()
+    
+#    n=np.ceil((wave.max()-wave.min())/(sig*0.1))
+#    w_lin = np.arange(n, dtype=float)*sig*0.1+wave.min()
+    w_lin=np.linspace(wave.min(),wave.max(),wave.size)
     from scipy.interpolate import InterpolatedUnivariateSpline as IUS
     s_lin = IUS(wave, spec)(w_lin)
+    if usepya:
+        import PyAstronomy.pyasl
+        return w_lin, PyAstronomy.pyasl.broadGaussFast(w_lin,s_lin,sig)
+    
 
     k_x=np.arange(101, dtype=float)*0.1*sig - 5.0*sig
 
@@ -649,18 +754,74 @@ def broaden(wave, spec, dl):
 
     return w_lin, broadened
 
-def avgstd(values, weights=None,axis=None):
+def avgstd(values, weights=None, ret_e=False,
+           bootstrapeN=1000,ret_std_e=False):
     """
     Return the weighted average and standard deviation.
 
     values, weights -- Numpy ndarrays with the same shape.
+    
+    axis must be first axis if specified
+    
+    ret_e assumes weights are 1/var
+    see also http://stats.stackexchange.com/questions/25895/computing-standard-error-in-weighted-mean-estimation
     """
-    average = np.average(values, weights=weights,axis=axis)
-    variance = np.average((values-average)**2, weights=weights,axis=axis)
+    if not isinstance(values,np.ndarray): values=np.array(values)
+    if not isinstance(weights,np.ndarray): weights=np.array(weights)
+
+    if values.ndim != weights.ndim:
+        raise ValueError('Array dimensions do not match')
+
+    values=np.squeeze(values)
+    weights=np.squeeze(weights)
+
+    axis=None if values.ndim==1 else 0
+
+    if axis is not None and (ret_e or ret_std_e):
+        import ipdb;ipdb.set_trace()
+        raise ValueError('Axis not supported')
+
+    try:
+        average = np.average(values, weights=weights, axis=axis)
+        variance = (((values-average)**2*weights).sum(axis)/
+                    weights.sum(axis)-(weights**2).sum(axis)/weights.sum(axis))
+        if ret_e or ret_std_e:
+            bootstrap_e=bootstrap_weightedmean_err(values,
+                                                   1/np.sqrt(weights),
+                                                   N=bootstrapeN)
+            if ret_std_e:
+                return (average, np.sqrt(variance),
+                        bootstrap_e[0],bootstrap_e[1])
+            else:
+                return (average, np.sqrt(variance), bootstrap_e[0])
+        
+        else:
+            return (average, np.sqrt(variance))
+    except ZeroDivisionError:
+        return (np.nan,np.nan,np.nan) if ret_e else (np.nan,np.nan)
+
+def bootstrap_weightedmean_err(xi,si, N=1000):
+    """" sample the gaussians at (xi,si) N times"""
+    ind=np.arange(xi.size)
+    bp=np.array([avgstd(*np.array([(np.random.normal(xi[i],si[i]),1/si[i]**2)
+                                   for i in
+                                   np.random.choice(ind,ind.size,replace=True)]
+                                   ).T,ret_e=False)[:2] for n in xrange(N)])
+    return bp.std(0)
+
+def avgerr(values, weights,axis=None):
+    """
+    Return the weighted average and its error.
+    
+    values, weights -- Numpy ndarrays with the same shape.
+    """
+    average = np.average(values, weights=weights, axis=axis)
+    variance=1/(weights.sum(axis))
     return (average, np.sqrt(variance))
 
-def color_z_plot(x,y,z, cmap_name='gist_rainbow', lim=1e100, psym='o',
-                 label=None):
+
+def color_z_plot(x,y,z, cmap_name='nipy_spectral', lim=1e100, psym='o',
+                 label=None,cbax=None,nocbar=False):
     oset=z-np.median(z)
     good=(np.abs(oset)<lim)
     cmap=plt.cm.get_cmap(cmap_name)
@@ -674,9 +835,12 @@ def color_z_plot(x,y,z, cmap_name='gist_rainbow', lim=1e100, psym='o',
     sm=plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(
                            vmin=z[good].min(), vmax=z[good].max()))
     sm._A=[]
-    cbar=plt.colorbar(sm)
-    if label is not None: cbar.set_label(label)
-    return sm,cbar
+    if not nocbar:
+        cbar=plt.colorbar(sm,cax=cbax)
+        if label is not None: cbar.set_label(label)
+        return sm,cbar
+    else:
+        return sm,None
 
 def binned_xy_plot(x,y,nbin=10):
     x=np.array(x)
@@ -695,7 +859,7 @@ def binned_xy_plot(x,y,nbin=10):
     plt.plot(x, y, 'bo')
     plt.errorbar((_[1:] + _[:-1])/2, mean, yerr=std, fmt='r-')
 
-def casagrandeTeff(color, sys='BV', feh=0.0):
+def casagrandeTeff(color, sys='BV', feh=0.0,clip=False, colore=0):
     data={'BV':{'mr':(-5.0, 0.4), 'xr':(0.18, 1.29), 'e':82,
                 'ai':(0.5665, 0.4809, -0.0060, -0.0613, -0.0042, 0.0035)},
           'VRc':{'mr':(-5.0, 0.3), 'xr':(0.24, 0.80),'e':59,
@@ -726,13 +890,26 @@ def casagrandeTeff(color, sys='BV', feh=0.0):
         raise ValueError('Valid systems are {}'.format(', '.join(data.keys())))
     dat=data[sys]
     if feh < dat['mr'][0] or feh > dat['mr'][1]:
-        raise ValueError('Valid [Fe/H] range is {}'.format(dat['mr']))
+        if clip:
+            print 'Clipping [Fe/H]'
+            feh=min(max(feh,dat['mr'][0]),dat['mr'][1])
+        else:
+            raise ValueError('Valid [Fe/H] range is {}'.format(dat['mr']))
     if color < dat['xr'][0] or color > dat['xr'][1]:
-        raise ValueError('Valid color range is {}'.format(dat['xr']))
+        if clip:
+            print 'Clipping color'
+            color=min(max(color,dat['xr'][0]),dat['xr'][1])
+        else:
+            raise ValueError('Valid color range is {}'.format(dat['xr']))
     a0,a1,a2,a3,a4,a5=dat['ai']
+
+    dtdc = (- 5040.0 * ( a1+a3*feh+2*a2*color)/
+            (a0+a4*feh+a5*feh**2+a1*color+a3*feh*color+a2*color**2)**2)
+    dtdc*colore
+
     return (5040.0/(a0 + a1*color + a2*color**2 + a3*color*feh +
                     a4*feh + a5*feh**2),
-            dat['e']+17)
+            np.sqrt((dat['e']+17)**2+ (dtdc*colore)**2))
 
 
 
@@ -814,4 +991,130 @@ def sigma_clip_polyfit(x, y, power, sig=3, sigu=None, sigl=None, iter=1):
 
 
 
+def rebin_spec(spec, w_in_center, w_out_center):
+    """waves are at the bin centers"""
+    #move from centers to leading edge by linear approx
+    dw_in_center=np.diff(w_in_center)
+    w_in=w_in_center-np.concatenate([dw_in_center[0:1],dw_in_center])/2
+    
+    dw_out_center=np.diff(w_out_center)
+    w_out=w_out_center-np.concatenate([dw_out_center[0:1],dw_out_center])
+    
+    #width of input bins by linear approx
+    dw_in=np.diff(w_in)
+    #extrapolate to get width of last
+    dw_in=np.concatenate([dw_in,dw_in[-1:]])
+    
+#    dw_out=np.diff(w_out)
+#    dw_out=np.concatenate([dw_out,dw_out[-1:]])
+
+    #output
+    sout=np.zeros_like(w_out, dtype=spec.dtype)
+#    vout=sout.copy()
+
+#    import ipdb;ipdb.set_trace()
+    #Regrid
+    for i in xrange(w_out.size-1):
+        #done, no more data, barring the last fractional pixel
+        if w_out[i]>w_in[-1]:
+            print 'Breaking on {}'.format(i)
+            break
+        if w_out[i]<w_in[0]: continue # not fully in region yet
+        
+        
+        #find last w_in[j] <= w_out[i]
+        j=np.where(w_in<=w_out[i])[0][-1]
+#        if i==1200:
+#            import ipdb;ipdb.set_trace()
+        #find last w_in[j] <= w_out[i+1]
+        try:
+            jl=np.where(w_in[j:]<=w_out[i+1])[0][-1]+j
+        except IndexError:
+            break
+        
+        #w_in[j:jl+1] are all in the output pixel, at least partially
+
+        if jl==j: #just taking this one subpixel (new pix is fully inside j)
+#            print 'Multiple in 1'
+            frac=(w_out[i+1]-w_out[i])/dw_in[j]
+            sout[i]=frac*spec[j]
+#            vout[i]=frac**2*var[j]
+        else:
+            #will take some of this pixel and some or all of j+1,...
+            
+            #this pixel
+            frac=(w_in[j+1]-w_out[i])/dw_in[j]
+            sout[i]=frac*spec[j]
+#            vout[i]=frac**2*var[j]
+
+            # we get all of j+1 to jl excluding jl
+            sout[i]+=spec[j+1:jl].sum()
+#            vout[i]+=var[j+1:jl].sum()
+
+            #we get some of jl
+            frac=(w_out[i+1]-w_in[jl])/dw_in[jl]
+            sout[i]+=frac*spec[jl]
+#            vout[i]+=frac**2*var[jl]
+#
+#        if sout[i]==0:
+#            import ipdb;ipdb.set_trace()
+
+    return sout#, vout
+
+
+
+
+def massradius_torres(teff, logg, feh):
+    """
+      Uses the Torres relation
+      (http://adsabs.harvard.edu/abs/2010A%26ARv..18...67T) to determine
+      the stellar mass and radius given the logg, Teff, and [Fe/H].
+
+      NOTE the errors in the empirical model of ulogm = 0.027d0, ulogr = 0.014d0
+
+    INPUTS:
+       LOGG - The log of the stellar surface gravity
+       TEFF - The stellar effective temperature
+       FEH  - The stellar metalicity
+
+    OUTPUTS:
+       MSTAR - The stellar mass, in solar masses
+       RSTAR - The stellar radius, in sexitolar radii
+
+    MODIFICATION HISTORY
+
+     2012/06 -- Public release -- Jason Eastman (LCOGT)
+     2015/02 -- Convert to python -- Jeb Bailey (UMichigan)
+    """
+    if type(teff) in (int, float): teff=np.array([teff])
+    if type(logg) in (int, float): logg=np.array([logg])
+    if type(feh) in (int, float): feh=np.array([feh])
+    
+    #coefficients from Torres, 2010
+    ai = np.array([1.5689,1.3787,0.4243,1.139,-0.14250,0.01969,0.10100])
+    bi = np.array([2.4427,0.6679,0.1771,0.705,-0.21415,0.02306,0.04173])
+    
+    #ulogm = 0.027d0
+    #ulogr = 0.014d0
+
+    X = np.log10(teff) - 4.1
+    
+    coeffs = np.array([1.0, X, X**2.0, X**3.0, logg**2.0, logg**3.0, feh])
+    logm = (ai*coeffs).sum(0)
+    logr = (bi*coeffs).sum(0)
+
+    return 10.0**logm, 10.0**logr
+
+def est_companion_mass(M,P,sRV):
+    """
+    mass of star in Msun, P in days, RV induced is peak to peak
+    """
+    twopi=2.0*np.pi
+    Msun = 1.989e33   #g
+    G    = 6.674e-8   #cgs: cm^3 / g s^2
+    AU   = 1.496e13   #cm
+    secpday  = 24.0*3600   #s/day
+    secpyear  = 24.0*3600*365.25   #s/year
+    a    = ((G*M*Msun*(P*secpday)**2 / twopi**2) ** (1/3.0))
+    return M*1047.889* (sRV*1e2)/np.sqrt(G*M*Msun/a)/2
 

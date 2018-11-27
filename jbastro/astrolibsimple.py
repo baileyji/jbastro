@@ -153,4 +153,4 @@ def dm2d(dm):
     return int(round(10.0**((dm+5.0)/5.0)))
 
 def d2dm(parsec):
-    return -5 + 5.0*np.log10(parsec)
+    return -5 + 5.0*math.log10(parsec)

@@ -433,6 +433,7 @@ def fitPSF(ec, guessLoc, fitwidth=20, verbose=False, sigma=5,
     if verbose:
         message("Sampling: ec[%i:%i,%i:%i]"%(ymin,ymax,xmin,xmax))
 
+
     firstSeg = np.median(ec[ymin:ymax,xmin:xmax],1)
     if verbose:
         print firstSeg
@@ -446,12 +447,14 @@ def fitPSF(ec, guessLoc, fitwidth=20, verbose=False, sigma=5,
         err = np.sqrt((err_ec[ymin:ymax,xmin:xmax]**2).mean(1))
         err[True - np.isfinite(err)] = err[np.isfinite(err)].max() * 1e9
 
+
     #guessAmp = (an.wmean(firstSeg, 1./err**2) - np.median(firstSeg)) * fitwidth
     #if not np.isfinite(guessAmp):
     #     pdb.set_trace()
 
     #fit, efit = fitGaussian(firstSeg, verbose=verbose, err=err, guess=[guessAmp[0], 5, fitwidth/2., np.median(firstSeg)])
-    fit, efit = fitGaussian(firstSeg, verbose=verbose, err=err, guess=None)
+    #fit, efit = fitGaussian(firstSeg, verbose=verbose, err=err, guess=None)
+    fit, efit = fitTophat(firstSeg, verbose=verbose, err=err, guess=None)
     #fit: p3 + p0/(p1*sqrt(2pi)) * exp(-(x-p2)**2 / (2*p1**2))
     newY = ymin+fit[2]
     err_newY = efit[2]
@@ -631,7 +634,9 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
     if plotalot:
         f = plt.figure()
         ax = plt.axes()
-        plt.imshow(ec, interpolation='nearest',aspect='auto')
+        plt.imshow(ec, vmin=ec.mean()-2.5*ec.std(),
+                   vmax=ec.mean()+2.5*ec.std(),
+                   interpolation='nearest',aspect='auto')
         sortedvals = np.sort(ec.ravel())
 #        plt.clim([sortedvals[nx*ny*.01], sortedvals[nx*ny*.99]])
         #plt.imshow(np.log10(ec-ec.min()+np.median(ec)),interpolation='nearest',aspect='auto')
@@ -715,11 +720,17 @@ def traceorders(filename, pord=5, dispaxis=0, nord=1, verbose=False,
         for i_meas in range(1,len(xPositions)):
             guessLoc = xPositions[i_meas], guessY(xPositions[i_meas])
 
-            thisx, thisy, err_thisy, thispeak = fitPSF(ec, guessLoc,
-                                            fitwidth=fitwidth,
-                                            verbose=verbose-1,
-                                            medwidth=medwidth, err_ec=err_ec)
-
+            try:
+                thisx, thisy, err_thisy, thispeak = fitPSF(ec, guessLoc,
+                                                fitwidth=fitwidth,
+                                                verbose=verbose-1,
+                                                medwidth=medwidth, err_ec=err_ec)
+            except ValueError:
+                thisx=np.nan
+                thisy=np.inf
+                err_thisy=np.inf
+                thispeak
+            
             if (err_thisy > errLim or
                abs(thisy - yPositions[abs(thisx-xPositions[:i_meas]).argmin()]) > max_ctr_move):
                 yPositions[i_meas]=guessLoc[1]

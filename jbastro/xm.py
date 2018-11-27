@@ -3,8 +3,6 @@ import numpy as np
 from astropy.io import ascii
 from astropy.io import fits
 from astropy import coordinates as coord
-from astropy.coordinates.angles import RA
-from astropy.coordinates.angles import Dec
 from astropy import units as u
 from queryVizier import send_query_vizier
 from great_circle_dist import dist_radec_fast, dist_radec
@@ -15,9 +13,8 @@ import types
 from astroLib import *
 import NewKC as KC
 
-XMATCH_SCALE_DEG=2./3600
 
-def xmatch(data, stars,summary=False,verbose=False):
+def xmatch(data, stars,summary=False,verbose=False, XMATCH_SCALE_DEG=2.0/3600):
 
     ra=stars['RAJ2000']
     de=stars['DEJ2000']
