@@ -14,8 +14,29 @@ class PrettifyHandler(mechanize.BaseHandler):
             response.set_data(soup.prettify())
         return response
 
-fluxdata={
 #http://www.solarham.net/averages.htm
+fluxdata={
+    ('September',2016):  87.5,
+    ('August'   ,2016):  85.0,
+    ('July'     ,2016):  85.9,
+    ('June'     ,2016):  81.9,
+    ('May'      ,2016):  93.1,
+    ('April'    ,2016):  93.4,
+    ('March'    ,2016):  91.6,
+    ('February' ,2016): 103.5,
+    ('January'  ,2016): 103.5,
+    ('December' ,2015): 112.8,
+    ('November' ,2015): 109.6,
+    ('October'  ,2015): 104.1,
+    ('September',2015): 102.1,
+    ('August'   ,2015): 106.2,
+    ('July'     ,2015): 107.0,
+    ('June'     ,2015): 123.2,
+    ('May'      ,2015): 120.1,
+    ('April'    ,2015): 129.2,
+    ('March'    ,2015): 126.0,
+    ('February' ,2015): 128.8,
+    ('January'  ,2015): 141.7,
     ('December' ,2014): 158.7,
     ('November' ,2014): 155.2,
     ('October'  ,2014): 153.7,
@@ -66,7 +87,8 @@ fluxdata={
     ('January'  ,2011):  83.7,
     ('December' ,2010):  84.3}
 
-def query_skycalc(ra, dec, utc, obs_lat_deg, obs_lon_deg, outfile, debug=False):
+def query_skycalc(ra, dec, utc, obs_lat_deg, obs_lon_deg, outfile,
+                   wmin=650, wmax=750, debug=False):
 
     #compute Ephemeris data
     targ=ephem.Equatorial(ra, dec)
@@ -164,8 +186,8 @@ def query_skycalc(ra, dec, utc, obs_lat_deg, obs_lon_deg, outfile, debug=False):
     br.find_control('SKYCALC.MAG.FLAG').items[0].selected=False
     br.find_control('SKYCALC.LSF.PLOT.FLAG').items[0].selected=False
 
-    br['SKYMODEL.WAVELENGTH.MIN']='650'
-    br['SKYMODEL.WAVELENGTH.MAX']='750'
+    br['SKYMODEL.WAVELENGTH.MIN']='{:.0f}'.format(wmin)
+    br['SKYMODEL.WAVELENGTH.MAX']='{:.0f}'.format(wmax)
     br['SKYMODEL.WAVELENGTH.GRID.MODE']=['fixed_spectral_resolution']
     br['SKYMODEL.WAVELENGTH.RESOLUTION']='500000'
     br['SKYMODEL.LSF.KERNEL.TYPE']=['none']
