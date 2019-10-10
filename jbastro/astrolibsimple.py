@@ -50,22 +50,6 @@ def dec2sex(n, ra=False):
 
     return sign*hord,m,secs,
 
-#def sexconvert(*args,**kwargs):
-#    """Hack to force Matt's rounding errors"""
-#    ra=kwargs.get('ra',False)
-#    dtype=kwargs.get('dtype',str)
-#    fmt=kwargs.get('fmt','{: 03.0f}:{:02}:{:07.4f}')
-#    if len(args)==1:
-#        x=args[0]
-#    elif len(args)==3:
-#        x=args[:3]
-#    else:
-#        raise ValueError('Unsupported args: {}',str(args))
-#    
-#    x=_sexconvert(x,dtype=float,ra=ra)
-#    myfmt='{: 03.0f}:{:02}:{:05.2f}' if ra else '{: 03.0f}:{:02}:{:04.1f}'
-#    x=_sexconvert(x,dtype=str,ra=ra,fmt=myfmt)
-#    return _sexconvert(x,dtype=dtype,ra=ra,fmt=fmt)
 
 def sexconvert(*args,**kwargs):
     """convert a sexgesmal number to something"""
@@ -130,8 +114,8 @@ def test_sexconvert():
             #float->str
             for i,v in enumerate(floats):
                 assert sexconvert(v, dtype=str, ra=ra_or_dec).strip()==strs[i]+'00'
-        except AssertionError,e:
-            print str(e)
+        except AssertionError as e:
+            print(str(e))
             import pdb;pdb.set_trace()
     test_inner(True,
                ['11:12:09.85','-00:34:32.02','00:34:32.02','-10:34:32.02'],

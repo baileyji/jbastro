@@ -121,12 +121,12 @@ class cosmicsimage:
 		self.sigcliplow = sigclip * sigfrac
 		self.satlevel = satlevel
         	
-        	self.verbose = verbose
-        	
-        	self.pssl = pssl
-        	
-        	self.backgroundlevel = None # only calculated and used if required.
-        	self.satstars = None # a mask of the saturated stars, only calculated if required
+		self.verbose = verbose
+
+		self.pssl = pssl
+
+		self.backgroundlevel = None # only calculated and used if required.
+		self.satstars = None # a mask of the saturated stars, only calculated if required
 
 	def __str__(self):
 		"""
@@ -153,7 +153,7 @@ class cosmicsimage:
 		if verbose == None:
 			verbose = self.verbose
 		if verbose:
-			print "Labeling mask pixels ..."
+			print("Labeling mask pixels ...")
 		# We morphologicaly dilate the mask to generously connect "sparse" cosmics :
 		#dilstruct = np.ones((5,5))
 		dilmask = ndimage.morphology.binary_dilation(self.mask, structure=dilstruct, iterations=1, mask=None, output=None, border_value=0, origin=0, brute_force=False)
