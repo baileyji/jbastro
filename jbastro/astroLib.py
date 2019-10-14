@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import astropy
 from scipy.interpolate import InterpolatedUnivariateSpline as IUS
+import scipy.ndimage
 
 from jbastro.great_circle_dist import dist_radec_fast
 from jbastro.astrolibsimple import roundTo, dm2d, d2dm, sexconvert, dec2sex, sex2dec
@@ -43,18 +44,18 @@ def do_kde(y, x=None, scipykde=False, norm=False):
     return x, pdf, (msig, psig), {'ppf': ret, 'bw': bw, 'norm': nval}
 
 
-def crreject(im, **cosmics_settings):
+def crreject(im, dialate=False, **cosmics_settings):
     """Give a seqno or a path to a quad if file set"""
     # def_cosmic_settings = {'sigclip': 6.0, 'sigfrac': 0.5,
     #                        'objlim': 1.4, 'iter': 7, 'readnoise': 0.0,
     #                        'gain': 1.0, 'satlevel': .95 * (2 ** 16)}
 
     def_cosmic_settings = {'sigclip': 6.0, 'sigfrac': 0.5,
-                           'objlim': 1.4, 'iter': 7, 'readnoise': 0.0,
+                           'objlim': 1.4, 'niter': 7, 'readnoise': 0.0,
                            'gain': 1.0, 'satlevel': .95 * (2 ** 16),
                            'sepmed': True, 'pssl': 0.0, 'fsmode': 'median',
                            'psfmodel': 'gaussy', 'psffwhm': 2.5, 'psfsize': 7,
-                           'psfk': None, 'psfbeta': 4.765, 'verbose': False}
+                           'psfk': None, 'psfbeta': 4.765, 'verbose': True}
 
     for k in def_cosmic_settings:
         if k not in cosmics_settings:
@@ -68,7 +69,13 @@ def crreject(im, **cosmics_settings):
     #                                psfmodel='gauss', float psffwhm=2.5, int psfsize=7,
     #                                psfk=None, float psfbeta=4.765, verbose=False)
     mask, _ = detect_cosmics(im, **cosmics_settings)
-    return mask.astype(np.uint8)
+    mask = mask.astype(np.bool)
+    if dialate:
+        mask = scipy.ndimage.morphology.binary_dilation(mask, structure=np.ones((3, 3)),
+                                                        iterations=1, mask=None, output=None,
+                                                        border_value=0, origin=0, brute_force=False)
+
+    return mask
 
     # cosmic_iter = cosmics_settings.pop('iter')
     # c = cosmicsimage(im, **cosmics_settings)
