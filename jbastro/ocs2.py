@@ -5,6 +5,9 @@ def Teff_correction(Teff):
 
 
 def corrTeff(teff):
+    import numpy as np
+    if isinstance(teff, (list, tuple)):
+        teff = np.asarray(teff)
     return teff + Teff_correction(teff)
 
 

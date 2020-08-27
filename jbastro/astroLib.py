@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import astropy
 from scipy.interpolate import InterpolatedUnivariateSpline as IUS
 import scipy.ndimage
@@ -86,6 +85,7 @@ def crreject(im, dialate=False, **cosmics_settings):
 
 
 def cycscatter(*args, **kwargs):
+    import matplotlib.pyplot as plt
     """Make a cyclic scatter plot"""
     x = args[0].copy()
     if 'set_xlim' in kwargs:
@@ -525,6 +525,7 @@ def gaussfit2D(im, initialp, ftol=1e-5, maxfev=5000, retcov=False):
 
 
 def aniscatter(x, y, **kwargs):
+    import matplotlib.pyplot as plt
     import matplotlib.animation as animation
     numframes = len(x)
 
@@ -565,6 +566,7 @@ def anim_to_html(anim):
 
 
 def display_animation(anim):
+    import matplotlib.pyplot as plt
     plt.close(anim._fig)
     from IPython.display import HTML
     return HTML(anim_to_html(anim))
@@ -587,6 +589,7 @@ def extract_key_from_FITSrec_list(targetThing, key):
 
 
 def pltradec(thing, clear=False, lw=0, m='.', c='k', fig=None):
+    import matplotlib.pyplot as plt
     """thing must have keys RAJ2000 and DEJ2000 """
     # global clusters
     if fig != None:
@@ -830,18 +833,14 @@ def avgstd(values, weights=None, ret_e=False,
         average = np.average(values, weights=weights, axis=axis)
         variance = (((values - average) ** 2 * weights).sum(axis) /
                     weights.sum(axis) - (weights ** 2).sum(axis) / weights.sum(axis))
+        ret = [average, np.sqrt(variance)]
         if ret_e or ret_std_e:
-            bootstrap_e = bootstrap_weightedmean_err(values,
-                                                     1 / np.sqrt(weights),
-                                                     N=bootstrapeN)
+            bootstrap_e = bootstrap_weightedmean_err(values, 1 / np.sqrt(weights), N=bootstrapeN)
+            ret.append(bootstrap_e[0])
             if ret_std_e:
-                return (average, np.sqrt(variance),
-                        bootstrap_e[0], bootstrap_e[1])
-            else:
-                return (average, np.sqrt(variance), bootstrap_e[0])
+                ret.append(bootstrap_e[1])
 
-        else:
-            return (average, np.sqrt(variance))
+        return tuple(ret)
     except ZeroDivisionError:
         return (np.nan, np.nan, np.nan) if ret_e else (np.nan, np.nan)
 
@@ -869,6 +868,7 @@ def avgerr(values, weights, axis=None):
 
 def color_z_plot(x, y, z, cmap_name='nipy_spectral', lim=1e100, psym='o',
                  label=None, cbax=None, nocbar=False):
+    import matplotlib.pyplot as plt
     oset = z - np.median(z)
     good = (np.abs(oset) < lim)
     cmap = plt.cm.get_cmap(cmap_name)
@@ -889,8 +889,8 @@ def color_z_plot(x, y, z, cmap_name='nipy_spectral', lim=1e100, psym='o',
     else:
         return sm, None
 
-
 def binned_xy_plot(x, y, nbin=10):
+    import matplotlib.pyplot as plt
     x = np.array(x)
     y = np.array(y)
 
@@ -1129,6 +1129,10 @@ def massradius_torres(teff, logg, feh):
     if type(logg) in (int, float): logg = np.array([logg])
     if type(feh) in (int, float): feh = np.array([feh])
 
+    teff = np.asarray(teff)
+    logg = np.asarray(logg)
+    feh = np.asarray(feh)
+
     # coefficients from Torres, 2010
     ai = np.array([1.5689, 1.3787, 0.4243, 1.139, -0.14250, 0.01969, 0.10100])
     bi = np.array([2.4427, 0.6679, 0.1771, 0.705, -0.21415, 0.02306, 0.04173])
@@ -1152,8 +1156,8 @@ def est_companion_mass(M, P, sRV):
     twopi = 2.0 * np.pi
     Msun = 1.989e33  # g
     G = 6.674e-8  # cgs: cm^3 / g s^2
-    AU = 1.496e13  # cm
+    # AU = 1.496e13  # cm
     secpday = 24.0 * 3600  # s/day
-    secpyear = 24.0 * 3600 * 365.25  # s/year
+    # secpyear = 24.0 * 3600 * 365.25  # s/year
     a = ((G * M * Msun * (P * secpday) ** 2 / twopi ** 2) ** (1 / 3.0))
     return M * 1047.889 * (sRV * 1e2) / np.sqrt(G * M * Msun / a) / 2
