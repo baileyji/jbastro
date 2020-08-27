@@ -14,9 +14,9 @@ setup(name='jbastro',
       packages=['jbastro','jbastro.lacosmics'],
       scripts=[],
       install_requires=['numpy', 'matplotlib',
-                        'PyEphem','mechanize','BeautifulSoup',
+                        'PyEphem','mechanize','BeautifulSoup4',
                         'PyAstronomy'],
       package_data={'jbastro':['f2n_fonts/*','data/*']},
-      dependency_links = [pyastro_dep_link]
+      dependency_links=[pyastro_dep_link]
       )
       
