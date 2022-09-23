@@ -50,11 +50,9 @@ def crreject(im, dialate=False, **cosmics_settings):
     #                        'gain': 1.0, 'satlevel': .95 * (2 ** 16)}
 
     def_cosmic_settings = {'sigclip': 6.0, 'sigfrac': 0.5,
-                           'objlim': 1.4, 'niter': 7, 'readnoise': 0.0,
+                           'objlim': 1.4, 'niter': 4, 'readnoise': 2.5,
                            'gain': 1.0, 'satlevel': .95 * (2 ** 16),
-                           'sepmed': True, 'pssl': 0.0, 'fsmode': 'median',
-                           'psfmodel': 'gaussy', 'psffwhm': 2.5, 'psfsize': 7,
-                           'psfk': None, 'psfbeta': 4.765, 'verbose': True}
+                           'psffwhm': 4.5, 'psfsize': 7, 'verbose': True}
 
     for k in def_cosmic_settings:
         if k not in cosmics_settings:
@@ -165,9 +163,9 @@ def RtoV(Rabs):
 #    snr, mag, t = paramTriple
 #     1/3 e/s/pix @18.9
 #     1 c/s/A @18.7 V band (mgb filter) #Per mario November run night 2
-#    
+#
 #    count_rate= zp* 10**((mag-18.9)/-2.5)
-#    
+#
 #    if snr is None:
 #        snr = 175./np.sqrt(3) * 10**(.2*(13.5-mag))*np.sqrt(t)
 #    if mag is None:
@@ -197,10 +195,10 @@ def seeing_mag_loss(seeing):
 
 def expTime(paramTriple, seeing=1.0, zero_point=18.3, slit=45, fibtpt=.6,
             aperpix=0.05, teltpt=.8):
-    """ (SNR, mag, expTime) 
+    """ (SNR, mag, expTime)
     zero_point is 1 e/s/A with wide open slit
     36% of light gets through with 45 um slit
-    
+
     """
     snr, mag, t = paramTriple
 
@@ -254,9 +252,9 @@ def estMag(sptype, band='R'):
 
 
 def estBV(sptype):
-    """ 
+    """
     B-V value for a B0-M0 star
-    
+
     Appendix B, Gray
     """
     try:
@@ -380,10 +378,10 @@ def where2bool(length, whereTrue):
 def in_field(coord, stars, fov=M2FS_FOV_DEG, square=False, mask=False):
     """
         Return indices of stars which are in the field
-        
+
         stars may be array of ras & decs, a list of two arrays or an array of
         records with the RAJ2000 & DEJ2000 keys
-        
+
         if filter is set returns a boolean mask
         """
 
@@ -438,9 +436,6 @@ def in_field(coord, stars, fov=M2FS_FOV_DEG, square=False, mask=False):
 
 
 def gauss2dmodel(xw, yw, amp, xo, yo, sigma_x, sigma_y, covar, offset):
-    xo = float(xo)
-    yo = float(yo)
-
     x = np.arange(xw + 1, dtype=np.float) - xw / 2 + xo
     y = np.arange(yw + 1, dtype=np.float) - yw / 2 + yo
     x, y = np.meshgrid(x, y)
@@ -489,16 +484,11 @@ def gaussfit(xdata, ydata, p0=None, sig=1, ret_e=False):
 
 def gauss2D(xy, amp, xo, yo, sigma_x, sigma_y, covar, offset):
     x, y = xy
-    xo = float(xo)
-    yo = float(yo)
-
     rho = covar / (sigma_x * sigma_y)
+    z = (((x - xo) / sigma_x) ** 2 - 2 * rho * (x - xo) * (y - yo) / (sigma_x / sigma_y) +
+         ((y - yo) / sigma_y) ** 2)
 
-    z = ((x - xo) / sigma_x) ** 2 - 2 * rho * (x - xo) * (y - yo) / (sigma_x / sigma_y) + ((y - yo) / sigma_y) ** 2
-
-    g = amp * np.exp(-z / (2 * (1 - rho ** 2))) + offset
-
-    return g
+    return amp * np.exp(-z / (2 * (1 - rho ** 2))) + offset
 
 
 def gaussfit2D(im, initialp, ftol=1e-5, maxfev=5000, retcov=False):
@@ -610,7 +600,7 @@ def baryvel_los(obstime, coords, observatory_loc, sun=False,
     correction, expressed in km/sec. The four elements in the vector are radial, tangential,
     right ascension, and declination projections respectively. Add vvec(0) to the observed velocity
     scale to shift it to the barycenter.
-    
+
     sun=True to get shift of scattered light from sun. Coords don't matter
     """
     from PyAstronomy.pyasl import baryvel
@@ -774,9 +764,9 @@ def photometric_uncertainty(wave, spec, snr=None, mask=None):
 
 
 def broaden(wave, spec, dl, usepya=True):
-    """ 
+    """
     Broaden a spectrum by a gaussian of FWHM dl, uses IUS
-    
+
     Sepectrum should be padded by ~ 5 FWHM on either end
     """
 
@@ -800,6 +790,34 @@ def broaden(wave, spec, dl, usepya=True):
 
     return w_lin, broadened
 
+def eccentric_anomaly_from_mean(e, M, tolerance=1e-14):
+    MAX_ITERATIONS = 100
+    """Convert mean anomaly to eccentric anomaly.
+    Implemented from [A Practical Method for Solving the Kepler Equation][1]
+    Implemented from [A Practical Method for Solving the Kepler Equation][1]
+    by Marc A. Murison from the U.S. Naval Observatory
+
+    [1]: http://murison.alpheratz.net/dynamics/twobody/KeplerIterations_summary.pdf
+    """
+    Mnorm = np.fmod(M, 2 * np.pi)
+    E0 = M + (-1 / 2 * e ** 3 + e + (e ** 2 + 3 / 2 * np.cos(M) * e ** 3) * np.cos(M)) * np.sin(M)
+    dE = tolerance + 1
+    count = 0
+    while dE > tolerance:
+        t1 = np.cos(E0)
+        t2 = -1 + e * t1
+        t3 = np.sin(E0)
+        t4 = e * t3
+        t5 = -E0 + t4 + Mnorm
+        t6 = t5 / (1 / 2 * t5 * t4 / t2 + t2)
+        E = E0 - t5 / ((1 / 2 * t3 - 1 / 6 * t1 * t6) * e * t6 + t2)
+        dE = abs(E[0] - E0[0])
+        E0 = E
+        count += 1
+        if count >= MAX_ITERATIONS:
+            raise RuntimeError('Did not converge after {n} iterations. (e={e!r}, M={M!r})'.format(n=MAX_ITERATIONS, e=e, M=M))
+    return E
+
 
 def avgstd(values, weights=None, ret_e=False,
            bootstrapeN=1000, ret_std_e=False):
@@ -807,9 +825,9 @@ def avgstd(values, weights=None, ret_e=False,
     Return the weighted average and standard deviation.
 
     values, weights -- Numpy ndarrays with the same shape.
-    
+
     axis must be first axis if specified
-    
+
     ret_e assumes weights are 1/var
     see also http://stats.stackexchange.com/questions/25895/computing-standard-error-in-weighted-mean-estimation
     """
@@ -858,7 +876,7 @@ def bootstrap_weightedmean_err(xi, si, N=1000):
 def avgerr(values, weights, axis=None):
     """
     Return the weighted average and its error.
-    
+
     values, weights -- Numpy ndarrays with the same shape.
     """
     average = np.average(values, weights=weights, axis=axis)
@@ -970,10 +988,10 @@ def casagrandeTeff(color, sys='BV', feh=0.0, clip=False, colore=0):
 #    T = n/Fs
 #    frq = k/T # two sides frequency range
 #    frq = frq[range(n/2)] # one side frequency range
-#    
+#
 #    Y = fft.fft(y)/n # fft computing and normalization
 #    Y = Y[range(n/2)]
-#    
+#
 #    plot(frq,abs(Y)) # plotting the spectrum
 #    xlabel('Freq (Hz)')
 #    ylabel('|Y(freq)|')

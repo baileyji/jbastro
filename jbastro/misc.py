@@ -13,7 +13,7 @@ def rangify(data, delim=', '):
     data = list(data)
     data.sort()
     for k, g in groupby(enumerate(data), lambda foo: foo[0] - foo[1]):
-        ilist = map(itemgetter(1), g)
+        ilist =list(map(itemgetter(1), g))
         if len(ilist) > 1:
             str_list.append('%d-%d' % (ilist[0], ilist[-1]))
         else:
@@ -23,9 +23,9 @@ def rangify(data, delim=', '):
 
 def derangify(s, delim=','):
     """
-    Takes a range in form of "a-b" and generate a list of numbers between 
+    Takes a range in form of "a-b" and generate a list of numbers between
     a and b inclusive.
-    Also accepts comma separated ranges like "a-b,c-d,f" will build a 
+    Also accepts comma separated ranges like "a-b,c-d,f" will build a
     list which will include
     Numbers from a to b, a to d and f
     http://code.activestate.com/recipes/577279-generate-list-of-
@@ -79,7 +79,7 @@ def normspec(sin, doplot=False, min_good_frac=.05, poly_pow=7, maskin=None,
              robust=True):
     """
     Normalize a spectrum
-    
+
     Fit a polynomial, find the bits within sigmal and sigmau of the
     curve, repeat. quit when less than min_good_frac of the points are left
     in the data.
@@ -471,13 +471,13 @@ def anderson_ksamp(samples, midrank=True):
 # Put this here so it isn't lost forever (taken from another file elsewhere)
 # def imsurffit(im, order=3):
 #    """ ignore cross terms"""
-#    
+#
 #    xmin,xmax=0,im.shape[1]-1
 #    ymin,ymax=0,im.shape[0]-1
 #    xx, yy = np.meshgrid(np.arange(xmin,xmax+1), np.arange(ymin,ymax+1))
-#    
+#
 #    m = polyfit2d(xx.ravel(),yy.ravel(),im.ravel(),order=order)
-#    
+#
 #    # Evaluate it
 #    zz = polyval2d(xx, yy, m)
 #    return zz,m
