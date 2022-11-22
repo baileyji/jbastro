@@ -21,16 +21,18 @@ def rangify(data, delim=', '):
     return delim.join(str_list)
 
 
-def derangify(s, delim=','):
+def derangify(s:str, delim=','):
     """
     Takes a range in form of "a-b" and generate a list of numbers between
     a and b inclusive.
     Also accepts comma separated ranges like "a-b,c-d,f" will build a
     list which will include
+    _ are replaced with spaces
     Numbers from a to b, a to d and f
     http://code.activestate.com/recipes/577279-generate-list-of-
     numbers-from-hyphenated-and-comma/
     """
+    s = s.replace('_', ' ')
     s = "".join(s.split())  # removes white space
     r = set()
     for x in s.split(delim):
